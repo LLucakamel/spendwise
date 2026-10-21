@@ -2,6 +2,7 @@ import {
   ArrowLeftRightIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
+  SlidersHorizontalIcon,
   DownloadIcon,
   MoreHorizontalIcon,
   PlusIcon,
@@ -9,7 +10,7 @@ import {
   SearchXIcon,
   XIcon,
 } from 'lucide-react'
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router'
 import { toast } from 'sonner'
 import { Money } from '@/components/common/Money'
@@ -27,8 +28,9 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { NativeSelect } from '@/components/ui/native-select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { useSession } from '@/app/session'
 import { useFinance } from '@/data/DataProvider'
-import type { Transaction } from '@/domain/types'
+import { PAYMENT_METHOD_LABELS, PAYMENT_METHODS, type Transaction } from '@/domain/types'
 import { useCategoryLookup, useFormat } from '@/hooks/use-format'
 import { downloadTextFile, transactionsToCsv } from '@/lib/csv'
 import { todayIso } from '@/lib/dates'
@@ -75,9 +77,48 @@ export function TransactionsPage() {
   const format = useFormat()
   const lookup = useCategoryLookup()
   const dialogs = useTransactionDialogs()
+  const { basePath } = useSession()
   const [params, setParams] = useSearchParams()
   const filters = filtersFromParams(params)
   const page = Math.max(1, Number(params.get('page')) || 1)
+  const storageKey = `spendwise.filters.${basePath}`
+  // Advanced filters open automatically whenever one of them is active, unless the user toggles the panel.
+  const [showMoreChoice, setShowMore] = useState<boolean | null>(null)
+  const showMore = showMoreChoice ?? Boolean(filters.minAmount || filters.maxAmount || filters.paymentMethod)
+
+  // Keep the last filters for this tab so returning to the page restores them.
+  useEffect(() => {
+    const own = new URLSearchParams(params)
+    own.delete('open')
+    try {
+      if (own.toString()) sessionStorage.setItem(storageKey, own.toString())
+    } catch {
+      // Not critical.
+    }
+  }, [params, storageKey])
+  useEffect(() => {
+    if (params.toString()) return
+    try {
+      const saved = sessionStorage.getItem(storageKey)
+      if (saved) setParams(new URLSearchParams(saved), { replace: true })
+    } catch {
+      // Not critical.
+    }
+    // Only on the first visit without parameters.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Opening a record from global search: ?open=<id>
+  const openId = params.get('open')
+  useEffect(() => {
+    if (!openId) return
+    const target = transactions.find((t) => t.id === openId)
+    if (target) dialogs.openDetails(target)
+    const next = new URLSearchParams(params)
+    next.delete('open')
+    setParams(next, { replace: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openId])
 
   const filtered = useMemo(
     () => applyTransactionFilters(transactions, filters, lookup.name),
@@ -89,6 +130,17 @@ export function TransactionsPage() {
   const currentPage = Math.min(page, pageCount)
   const visible = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
   const active = hasActiveFilters(filters)
+
+  const clearFilters = () => {
+    try {
+      sessionStorage.removeItem(storageKey)
+    } catch {
+      // Not critical.
+    }
+    setParams(filtersToParams(EMPTY_FILTERS), { replace: true })
+  }
+  const needle = filters.query.trim().toLocaleLowerCase().slice(0, 3)
+  const suggestions = needle ? categories.filter((c) => c.name.toLocaleLowerCase().includes(needle)).slice(0, 4) : []
 
   const update = (patch: Partial<TransactionFilters>) => {
     setParams(filtersToParams({ ...filters, ...patch }), { replace: true })
@@ -175,6 +227,29 @@ export function TransactionsPage() {
               </NativeSelect>
             </div>
           </div>
+          {showMore ? (
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+              <div className="grid gap-1">
+                <Label htmlFor="f-min" className="text-xs text-muted-foreground">Min amount</Label>
+                <Input id="f-min" inputMode="decimal" placeholder="Any" value={filters.minAmount} onChange={(e) => update({ minAmount: e.target.value })} />
+              </div>
+              <div className="grid gap-1">
+                <Label htmlFor="f-max" className="text-xs text-muted-foreground">Max amount</Label>
+                <Input id="f-max" inputMode="decimal" placeholder="Any" value={filters.maxAmount} onChange={(e) => update({ maxAmount: e.target.value })} />
+              </div>
+              <div className="col-span-2 grid gap-1 md:col-span-1">
+                <Label htmlFor="f-method" className="text-xs text-muted-foreground">Payment method</Label>
+                <NativeSelect id="f-method" value={filters.paymentMethod} onChange={(e) => update({ paymentMethod: e.target.value as TransactionFilters['paymentMethod'] })}>
+                  <option value="">Any method</option>
+                  <option value="none">Not specified</option>
+                  {PAYMENT_METHODS.map((m) => (
+                    <option key={m} value={m}>{PAYMENT_METHOD_LABELS[m]}</option>
+                  ))}
+                </NativeSelect>
+              </div>
+              <p className="col-span-2 text-xs text-muted-foreground md:col-span-3">Amounts are compared in each transaction’s own currency.</p>
+            </div>
+          ) : null}
           <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
             <p className="text-muted-foreground" aria-live="polite">
               {filtered.length} of {transactions.length} transaction{transactions.length === 1 ? '' : 's'}
@@ -190,11 +265,16 @@ export function TransactionsPage() {
                 </>
               ) : null}
             </p>
-            {active ? (
-              <Button variant="ghost" size="sm" onClick={() => setParams(filtersToParams(EMPTY_FILTERS), { replace: true })}>
-                <XIcon /> Clear filters
+            <div className="flex gap-1">
+              <Button variant="ghost" size="sm" aria-expanded={showMore} onClick={() => setShowMore(!showMore)}>
+                <SlidersHorizontalIcon /> {showMore ? 'Fewer filters' : 'More filters'}
               </Button>
-            ) : null}
+              {active ? (
+                <Button variant="ghost" size="sm" onClick={clearFilters}>
+                  <XIcon /> Clear filters
+                </Button>
+              ) : null}
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -215,9 +295,26 @@ export function TransactionsPage() {
           <EmptyState
             icon={SearchXIcon}
             title="No matching transactions"
-            description="Try a different search term or clear the filters."
+            description={
+              suggestions.length > 0 ? (
+                <>
+                  Try a category instead:{' '}
+                  {suggestions.map((c, i) => (
+                    <span key={c.id}>
+                      {i > 0 ? ', ' : ''}
+                      <button type="button" className="font-medium text-primary hover:underline" onClick={() => update({ query: '', categoryId: c.id })}>
+                        {c.name}
+                      </button>
+                    </span>
+                  ))}
+                  .
+                </>
+              ) : (
+                'Try a different search term, widen the date range or clear the filters.'
+              )
+            }
             action={
-              <Button variant="outline" onClick={() => setParams(filtersToParams(EMPTY_FILTERS), { replace: true })}>
+              <Button variant="outline" onClick={clearFilters}>
                 Clear filters
               </Button>
             }

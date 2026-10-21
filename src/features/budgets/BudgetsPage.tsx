@@ -1,7 +1,7 @@
 import { ChevronLeftIcon, ChevronRightIcon, InfoIcon, MoreHorizontalIcon, PiggyBankIcon, PlusIcon } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router'
-import { useRepository } from '@/app/session'
+import { useAppPath, useRepository } from '@/app/session'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { EmptyState, PageHeader } from '@/components/common/states'
 import { Button } from '@/components/ui/button'
@@ -20,6 +20,7 @@ import { BudgetHealthBadge, budgetIndicatorClass } from './budgetUi'
 export function BudgetsPage() {
   const { budgets, transactions } = useFinance()
   const repo = useRepository()
+  const appPath = useAppPath()
   const format = useFormat()
   const lookup = useCategoryLookup()
   const thisMonth = monthOf(todayIso())
@@ -109,7 +110,7 @@ export function BudgetsPage() {
                           <DropdownMenuContent align="end">
                             <DropdownMenuItem onSelect={() => setForm({ open: true, budget })}>Edit</DropdownMenuItem>
                             <DropdownMenuItem asChild>
-                              <Link to={`/transactions?${new URLSearchParams({ category: budget.categoryId, currency: budget.currency, type: 'expense', from: range.from, to: range.to })}`}>
+                              <Link to={`${appPath('/transactions')}?${new URLSearchParams({ category: budget.categoryId, currency: budget.currency, type: 'expense', from: range.from, to: range.to })}`}>
                                 View transactions
                               </Link>
                             </DropdownMenuItem>

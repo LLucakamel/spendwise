@@ -4,18 +4,22 @@ import {
   CalendarClockIcon,
   FlaskConicalIcon,
   LayoutDashboardIcon,
+  LogOutIcon,
   PiggyBankIcon,
+  SearchIcon,
   SettingsIcon,
   WifiOffIcon,
   type LucideIcon,
 } from 'lucide-react'
 import { Suspense, useEffect, useState } from 'react'
-import { NavLink, Outlet, useLocation } from 'react-router'
-import { useSession } from '@/app/session'
+import { Link, NavLink, Outlet, useLocation } from 'react-router'
+import { useAppPath, useSession } from '@/app/session'
 import { ErrorState } from '@/components/common/states'
+import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useFinanceState } from '@/data/DataProvider'
-import { friendlyError } from '@/lib/errors'
+import { GlobalSearch } from '@/features/search/GlobalSearch'
+import { errorCode, friendlyError } from '@/lib/errors'
 import { cn } from '@/lib/utils'
 import { Logo } from './Logo'
 
@@ -52,11 +56,16 @@ function useOnline() {
 
 function DemoBanner() {
   return (
-    <div className="flex items-center justify-center gap-2 border-b border-warning/30 bg-warning-soft px-4 py-2 text-center text-xs font-medium text-foreground">
-      <FlaskConicalIcon className="size-3.5 shrink-0 text-warning" aria-hidden="true" />
-      <span>
-        <strong>Demo mode</strong> — fictional sample data, stored only in this browser. Nothing is sent to a server.
+    <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 border-b border-warning/30 bg-warning-soft px-4 py-2 text-center text-xs font-medium text-foreground">
+      <span className="inline-flex items-center gap-2">
+        <FlaskConicalIcon className="size-3.5 shrink-0 text-warning" aria-hidden="true" />
+        <span>
+          <strong>Demo mode</strong> — fictional sample data, saved only in this browser.
+        </span>
       </span>
+      <Link to="/" className="underline underline-offset-2 hover:no-underline">
+        Exit demo
+      </Link>
     </div>
   )
 }
@@ -65,7 +74,15 @@ function OfflineBanner() {
   return (
     <div role="status" className="flex items-center justify-center gap-2 bg-muted px-4 py-2 text-xs text-muted-foreground">
       <WifiOffIcon className="size-3.5" aria-hidden="true" />
-      You’re offline. Changes made now will sync when the connection returns, as long as this tab stays open.
+      You’re offline. Simple edits made now are queued in this tab and sync when the connection returns.
+    </div>
+  )
+}
+
+function LimitBanner() {
+  return (
+    <div role="status" className="bg-warning-soft px-4 py-2 text-center text-xs">
+      Only your most recent transactions are loaded. Totals and balances that need older history may be incomplete.
     </div>
   )
 }
@@ -84,13 +101,14 @@ function AccountBadge() {
     <div className="rounded-lg border px-3 py-2 text-xs">
       <p className="text-muted-foreground">Signed in as</p>
       <p className="truncate font-medium" title={account.email ?? undefined}>
-        {account.email}
+        {account.displayName || account.email}
       </p>
     </div>
   )
 }
 
 function Sidebar() {
+  const appPath = useAppPath()
   return (
     <aside className="sticky top-0 hidden h-dvh w-60 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground lg:flex">
       <div className="flex h-16 items-center px-5">
@@ -101,7 +119,7 @@ function Sidebar() {
           {NAV_ITEMS.map((item) => (
             <li key={item.to}>
               <NavLink
-                to={item.to}
+                to={appPath(item.to)}
                 end={item.to === '/'}
                 className={({ isActive }) =>
                   cn(
@@ -127,6 +145,7 @@ function Sidebar() {
 }
 
 function MobileNav() {
+  const appPath = useAppPath()
   return (
     <nav
       aria-label="Main"
@@ -136,7 +155,7 @@ function MobileNav() {
         {NAV_ITEMS.map((item) => (
           <li key={item.to}>
             <NavLink
-              to={item.to}
+              to={appPath(item.to)}
               end={item.to === '/'}
               className={({ isActive }) =>
                 cn(
@@ -173,37 +192,73 @@ function LoadingSkeleton() {
 }
 
 export function AppLayout() {
-  const { mode } = useSession()
+  const session = useSession()
   const { state, retry } = useFinanceState()
   const online = useOnline()
   const location = useLocation()
+  const [searchOpen, setSearchOpen] = useState(false)
 
   useEffect(() => {
     window.scrollTo({ top: 0 })
   }, [location.pathname])
 
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault()
+        setSearchOpen(true)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
+  const code = state.status === 'error' ? errorCode(state.error) : null
+  const sessionProblem = code === 'permission-denied' || code === 'unauthenticated'
+
   return (
     <div className="flex min-h-dvh">
-      <a
-        href="#main"
+      {/* A button rather than an anchor: "#main" would be read as a route by the hash router. */}
+      <button
+        type="button"
+        onClick={() => document.getElementById('main')?.focus()}
         className="sr-only z-50 rounded-md bg-primary px-3 py-2 text-primary-foreground focus:not-sr-only focus:fixed focus:top-2 focus:left-2"
       >
         Skip to content
-      </a>
+      </button>
       <Sidebar />
       <div className="flex min-w-0 flex-1 flex-col">
-        {mode === 'demo' ? <DemoBanner /> : null}
-        {!online && mode === 'firebase' ? <OfflineBanner /> : null}
-        <header className="flex h-14 items-center border-b px-4 lg:hidden">
-          <Logo />
+        {session.mode === 'demo' ? <DemoBanner /> : null}
+        {!online && session.mode === 'firebase' ? <OfflineBanner /> : null}
+        {state.data?.transactionLimitReached ? <LimitBanner /> : null}
+        <header className="flex h-14 items-center gap-3 border-b px-4 sm:px-6 lg:px-8">
+          <Logo className="lg:hidden" />
+          <Button
+            variant="outline"
+            className="ml-auto h-9 w-9 justify-start gap-2 px-0 text-muted-foreground sm:w-64 sm:px-3 lg:ml-0"
+            onClick={() => setSearchOpen(true)}
+            aria-label="Search everything"
+            aria-keyshortcuts="Control+K"
+          >
+            <SearchIcon className="mx-auto sm:mx-0" />
+            <span className="hidden sm:inline">Search…</span>
+            <kbd className="ml-auto hidden rounded border bg-muted px-1.5 text-[10px] font-medium sm:inline">Ctrl K</kbd>
+          </Button>
         </header>
-        <main id="main" className="mx-auto w-full max-w-7xl flex-1 px-4 pt-6 pb-28 sm:px-6 lg:px-8 lg:pb-10">
+        <main id="main" tabIndex={-1} className="mx-auto w-full max-w-7xl flex-1 px-4 pt-6 pb-28 outline-none sm:px-6 lg:px-8 lg:pb-10">
           {state.status === 'ready' ? (
             <Suspense fallback={<LoadingSkeleton />}>
               <Outlet />
             </Suspense>
           ) : state.status === 'loading' ? (
             <LoadingSkeleton />
+          ) : sessionProblem ? (
+            <div className="grid justify-items-center">
+              <ErrorState title="Your session needs attention" description="We couldn’t access your data with the current sign-in. Please sign in again." />
+              <Button onClick={() => void session.signOut()}>
+                <LogOutIcon /> Sign in again
+              </Button>
+            </div>
           ) : (
             <ErrorState
               title="We couldn’t load your data"
@@ -214,6 +269,7 @@ export function AppLayout() {
         </main>
       </div>
       <MobileNav />
+      {state.status === 'ready' ? <GlobalSearch open={searchOpen} onOpenChange={setSearchOpen} /> : null}
     </div>
   )
 }

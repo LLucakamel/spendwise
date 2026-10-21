@@ -1,4 +1,5 @@
 import { Link } from 'react-router'
+import { useAppPath } from '@/app/session'
 import type { CategorySummary } from '@/lib/finance'
 import { useCategoryLookup, useFormat } from '@/hooks/use-format'
 
@@ -20,6 +21,7 @@ export function CategoryBars({
 }) {
   const format = useFormat()
   const lookup = useCategoryLookup()
+  const appPath = useAppPath()
   const shown = items.slice(0, limit)
   const rest = items.slice(limit)
   const restTotal = rest.reduce((sum, i) => sum + i.totalMinor, 0)
@@ -66,7 +68,7 @@ export function CategoryBars({
           lookup.color(item.categoryId),
           item.totalMinor,
           item.share,
-          linkParams ? `/transactions?${new URLSearchParams({ ...linkParams, category: item.categoryId, currency, type: 'expense' })}` : undefined,
+          linkParams ? `${appPath('/transactions')}?${new URLSearchParams({ ...linkParams, category: item.categoryId, currency, type: 'expense' })}` : undefined,
         ),
       )}
       {rest.length > 0 ? row('other', `Other (${rest.length} categories)`, null, restTotal, restShare) : null}

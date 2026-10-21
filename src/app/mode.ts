@@ -1,8 +1,9 @@
 export type AppMode = 'demo' | 'firebase'
 
 /**
- * Chosen at build time from VITE_APP_MODE. Anything other than "demo" means the real,
- * Firebase-backed app; a missing Firebase configuration shows a setup screen instead of
- * silently switching to demo data.
+ * The mode is chosen by the route the visitor explicitly opens: /demo for the fictional
+ * sandbox, /app (after signing in) for a real account. The app never switches from one
+ * to the other on its own, e.g. after an authentication or network failure.
  */
-export const APP_MODE: AppMode = import.meta.env.VITE_APP_MODE === 'demo' ? 'demo' : 'firebase'
+export const DEMO_BASE = '/demo'
+export const APP_BASE = '/app'

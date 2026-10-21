@@ -36,3 +36,29 @@ describe('applyTransactionFilters', () => {
     expect(filtersFromParams(new URLSearchParams('type=bogus&sort=bogus'))).toEqual(EMPTY_FILTERS)
   })
 })
+
+describe('advanced filters', () => {
+  const rows = [
+    tx({ id: 'a', amountMinor: 500, paymentMethod: 'cash' }),
+    tx({ id: 'b', amountMinor: 2500, paymentMethod: 'credit-card' }),
+    tx({ id: 'c', amountMinor: 10000, paymentMethod: null }),
+    tx({ id: 'j', amountMinor: 3000, currency: 'JPY', paymentMethod: 'cash' }),
+  ]
+
+  it('filters by amount range in each transaction’s own currency (inclusive)', () => {
+    expect(applyTransactionFilters(rows, { ...EMPTY_FILTERS, minAmount: '5', maxAmount: '25' }, name).map((t) => t.id).sort()).toEqual(['a', 'b'])
+    // ¥3,000 is above 25 in its own currency.
+    expect(applyTransactionFilters(rows, { ...EMPTY_FILTERS, minAmount: '100' }, name).map((t) => t.id).sort()).toEqual(['c', 'j'])
+  })
+
+  it('filters by payment method, including "not specified"', () => {
+    expect(applyTransactionFilters(rows, { ...EMPTY_FILTERS, paymentMethod: 'cash' }, name).map((t) => t.id).sort()).toEqual(['a', 'j'])
+    expect(applyTransactionFilters(rows, { ...EMPTY_FILTERS, paymentMethod: 'none' }, name).map((t) => t.id)).toEqual(['c'])
+  })
+
+  it('combines filters and round-trips them through the URL', () => {
+    const filters = { ...EMPTY_FILTERS, currency: 'USD', paymentMethod: 'cash' as const, maxAmount: '10' }
+    expect(applyTransactionFilters(rows, filters, name).map((t) => t.id)).toEqual(['a'])
+    expect(filtersFromParams(filtersToParams(filters))).toEqual(filters)
+  })
+})

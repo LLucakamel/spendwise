@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import type { WeekStart } from '@/domain/types'
 import { comparisonRange, presetRange, todayIso, type DateRange, type PeriodPreset } from '@/lib/dates'
 
 export interface PeriodState {
@@ -11,13 +12,13 @@ export interface PeriodState {
 }
 
 /** Period selection shared by the dashboard and analytics pages. */
-export function usePeriod(initial: PeriodPreset = 'this-month'): PeriodState {
+export function usePeriod(initial: PeriodPreset = 'this-month', weekStartsOn: WeekStart = 1): PeriodState {
   const today = todayIso()
   const [preset, setPresetState] = useState<PeriodPreset>(initial)
   const [custom, setCustom] = useState<DateRange>(() => presetRange('last-30-days', today))
 
   return useMemo(() => {
-    const range = preset === 'custom' ? custom : presetRange(preset, today)
+    const range = preset === 'custom' ? custom : presetRange(preset, today, weekStartsOn)
     return {
       preset,
       range,
@@ -30,5 +31,5 @@ export function usePeriod(initial: PeriodPreset = 'this-month'): PeriodState {
       setCustomRange: (next: DateRange) =>
         setCustom(next.from <= next.to ? next : { from: next.to, to: next.from }),
     }
-  }, [preset, custom, today])
+  }, [preset, custom, today, weekStartsOn])
 }

@@ -35,6 +35,7 @@ export function renderApp(route: string, data: FinanceData = emptyData()) {
     mode: 'demo',
     account: { kind: 'demo' },
     repository,
+    basePath: '/demo',
     signOut: async () => undefined,
     deleteAccount: () => repository.deleteAllData(),
     resetDemo: () => repository.resetToSample(),
@@ -43,11 +44,11 @@ export function renderApp(route: string, data: FinanceData = emptyData()) {
   const result = render(
     <ThemeProvider>
       <TooltipProvider>
-        <MemoryRouter initialEntries={[route]}>
+        <MemoryRouter initialEntries={[`/demo${route === '/' ? '' : route}`]}>
           <SessionContext.Provider value={session}>
             <DataProvider repository={repository}>
               <Routes>
-                <Route path="/">{appRoutes()}</Route>
+                <Route path="/demo">{appRoutes()}</Route>
               </Routes>
             </DataProvider>
           </SessionContext.Provider>

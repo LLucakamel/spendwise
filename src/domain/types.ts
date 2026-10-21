@@ -130,4 +130,6 @@ export interface FinanceData {
   budgets: Budget[]
   recurringBills: RecurringBill[]
   settings: Settings
+  /** True when the cloud query hit its safety limit, so the oldest transactions were not loaded. */
+  transactionLimitReached?: boolean
 }

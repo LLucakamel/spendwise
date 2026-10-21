@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { expect, test } from '@playwright/test'
-import { addTransaction, cents, gotoApp, statCard, today } from './helpers'
+import { addTransaction, cents, go, gotoApp, statCard, today } from './helpers'
 
 test.describe('SpendWise demo', () => {
   test('launches and navigates through every section', async ({ page }) => {
@@ -21,7 +21,7 @@ test.describe('SpendWise demo', () => {
       await nav.getByRole('link', { name: link }).click()
       await expect(page.getByRole('heading', { level: 1, name: heading })).toBeVisible()
     }
-    await page.goto('/does-not-exist')
+    await go(page, '/does-not-exist')
     await expect(page.getByText('Page not found')).toBeVisible()
     expect(errors).toEqual([])
   })
@@ -94,10 +94,10 @@ test.describe('SpendWise demo', () => {
     const card = page.locator('[data-slot="card"]').filter({ hasText: 'Courses' })
     await expect(card).toContainText('0% used')
 
-    await page.goto('/transactions')
+    await go(page, '/transactions')
     await addTransaction(page, { description: 'Online course', amount: '25', category: 'Education', date: today() })
     await addTransaction(page, { description: 'Refund from friend', amount: '25', category: 'Gifts', type: 'income', date: today() })
-    await page.goto('/budgets')
+    await go(page, '/budgets')
     await expect(card).toContainText('$25.00')
     await expect(card).toContainText('25% used')
 
@@ -135,7 +135,7 @@ test.describe('SpendWise demo', () => {
     await expect(dialog).toBeHidden()
     await expect(row).not.toContainText('Due today')
 
-    await page.goto('/transactions')
+    await go(page, '/transactions')
     await page.getByLabel('Search transactions').fill('Cloud storage')
     await expect(page.getByText(/^1 of/)).toBeVisible()
   })
@@ -143,7 +143,7 @@ test.describe('SpendWise demo', () => {
   test('charts and summaries reflect the demo data', async ({ page }) => {
     await gotoApp(page)
     await expect(page.locator('.recharts-bar-rectangle').first()).toBeVisible()
-    await page.goto('/analytics')
+    await go(page, '/analytics')
     await expect(page.getByRole('heading', { level: 1, name: 'Analytics' })).toBeVisible()
     await expect(page.locator('.recharts-line-curve')).toBeVisible()
     const usdRow = page.locator('[data-slot="card"]').filter({ hasText: 'Totals by currency' }).getByRole('row', { name: /USD/ })
@@ -167,7 +167,7 @@ test.describe('SpendWise demo', () => {
     await page.getByLabel('Preferred display currency').selectOption('EUR')
     await page.getByRole('button', { name: 'Save preferences' }).click()
     await expect(page.getByText('Preferences saved')).toBeVisible()
-    await page.goto('/')
+    await go(page, '/')
     await page.getByLabel('Period').selectOption('last-90-days')
     await expect(page.getByText('Expenses · EUR')).toBeVisible()
     // Existing USD amounts are untouched: the USD figures are still available.
@@ -194,15 +194,15 @@ test.describe('SpendWise demo', () => {
     await page.getByRole('alertdialog').getByRole('button', { name: 'Clear data' }).click()
     await expect(page.getByRole('alertdialog')).toBeHidden()
     await expect(page.getByRole('alertdialog')).toBeHidden()
-    await page.goto('/')
+    await go(page, '/')
     await expect(page.getByText('Welcome to SpendWise')).toBeVisible()
-    await page.goto('/budgets')
+    await go(page, '/budgets')
     await expect(page.getByText('No budgets yet')).toBeVisible()
-    await page.goto('/bills')
+    await go(page, '/bills')
     await expect(page.getByText('No recurring bills yet')).toBeVisible()
-    await page.goto('/analytics')
+    await go(page, '/analytics')
     await expect(page.getByText('No transactions in this period')).toBeVisible()
-    await page.goto('/transactions')
+    await go(page, '/transactions')
     await expect(page.getByText('No transactions yet')).toBeVisible()
 
     await page.getByRole('main').getByRole('button', { name: 'Add transaction' }).first().click()

@@ -1,6 +1,7 @@
 import {
   ArrowDownRightIcon,
   ArrowUpRightIcon,
+  LightbulbIcon,
   CalendarClockIcon,
   InfoIcon,
   PieChartIcon,
@@ -11,6 +12,7 @@ import {
 } from 'lucide-react'
 import { useMemo, useState, type ReactNode } from 'react'
 import { Link } from 'react-router'
+import { useAppPath } from '@/app/session'
 import { CategoryBars } from '@/components/charts/CategoryBars'
 import { IncomeExpenseChart } from '@/components/charts/IncomeExpenseChart'
 import { Money } from '@/components/common/Money'
@@ -24,6 +26,9 @@ import { useFinance } from '@/data/DataProvider'
 import { BudgetHealthBadge, budgetIndicatorClass } from '@/features/budgets/budgetUi'
 import { BillTimingBadge } from '@/features/recurring/billUi'
 import { useTransactionDialogs } from '@/features/transactions/useTransactionDialogs'
+import { ConvertedTotal } from '@/components/common/ConvertedTotal'
+import { computeInsights } from '@/lib/insights'
+import { GettingStarted } from './GettingStarted'
 import { useCategoryLookup, useFormat } from '@/hooks/use-format'
 import { usePeriod } from '@/hooks/use-period'
 import { chooseGranularity, monthOf } from '@/lib/dates'
@@ -79,8 +84,9 @@ export function DashboardPage() {
   const { transactions, settings, budgets, recurringBills } = data
   const format = useFormat()
   const lookup = useCategoryLookup()
-  const period = usePeriod('this-month')
+  const period = usePeriod('this-month', settings.weekStartsOn)
   const dialogs = useTransactionDialogs()
+  const appPath = useAppPath()
 
   const inPeriod = useMemo(() => filterByRange(transactions, period.range), [transactions, period.range])
   const inComparison = useMemo(() => filterByRange(transactions, period.comparison), [transactions, period.comparison])
@@ -116,33 +122,24 @@ export function DashboardPage() {
     .sort((a, b) => b.usage.ratio - a.usage.ratio)
   const dueBills = billsDueWithin(recurringBills, period.today, 14)
   const recent = transactions.slice(0, 6)
+  const insights = computeInsights({
+    currency,
+    periodTransactions: inPeriod,
+    comparisonTransactions: inComparison,
+    allTransactions: transactions,
+    budgets,
+    bills: recurringBills,
+    month,
+    today: period.today,
+    categoryName: lookup.name,
+    money: format.money,
+  })
 
   if (transactions.length === 0) {
     return (
       <>
         <PageHeader title="Dashboard" description="Your financial overview." />
-        <Card>
-          <EmptyState
-            icon={WalletIcon}
-            title="Welcome to SpendWise"
-            description={
-              <>
-                Record your first income or expense to see totals, trends and budgets here. You can set your preferred currency and
-                opening balance in <Link to="/settings" className="font-medium text-primary underline-offset-4 hover:underline">Settings</Link>.
-              </>
-            }
-            action={
-              <div className="flex flex-wrap justify-center gap-2">
-                <Button onClick={() => dialogs.openCreate('expense')}>
-                  <PlusIcon /> Add expense
-                </Button>
-                <Button variant="outline" onClick={() => dialogs.openCreate('income')}>
-                  <PlusIcon /> Add income
-                </Button>
-              </div>
-            }
-          />
-        </Card>
+        <GettingStarted onAddTransaction={(type) => dialogs.openCreate(type)} />
         {dialogs.dialogs}
       </>
     )
@@ -198,7 +195,7 @@ export function DashboardPage() {
                 ? `Opening balance + all ${currency} transactions to today`
                 : 'No opening balance set — '}
               {!balance?.hasOpeningBalance ? (
-                <Link to="/settings#balances" className="font-medium text-primary hover:underline">add one</Link>
+                <Link to={`${appPath('/settings')}?section=balances`} className="font-medium text-primary hover:underline">add one</Link>
               ) : null}
             </span>
           }
@@ -220,6 +217,47 @@ export function DashboardPage() {
               </span>
             ))}
           </p>
+        </div>
+      ) : null}
+
+      {insights.length > 0 || periodTotals.length > 1 ? (
+        <div className={cn('mt-4 grid gap-4', periodTotals.length > 1 && insights.length > 0 && 'lg:grid-cols-2')}>
+          {insights.length > 0 ? (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <LightbulbIcon className="size-4 text-warning" aria-hidden="true" /> Insights
+                </CardTitle>
+                <CardDescription>Calculated from your records for this period — simple rules, not predictions.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <ul className="grid gap-2 text-sm">
+                  {insights.map((insight) => (
+                    <li key={insight.id} className="flex gap-2">
+                      <span
+                        aria-hidden="true"
+                        className={cn(
+                          'mt-1.5 size-2 shrink-0 rounded-full',
+                          insight.tone === 'warning' ? 'bg-warning' : insight.tone === 'positive' ? 'bg-income' : 'bg-muted-foreground',
+                        )}
+                      />
+                      <span>
+                        <span className="sr-only">{insight.tone === 'warning' ? 'Warning: ' : insight.tone === 'positive' ? 'Good news: ' : ''}</span>
+                        {insight.text}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </CardContent>
+            </Card>
+          ) : null}
+          {periodTotals.length > 1 ? (
+            <ConvertedTotal
+              title="Expenses across currencies"
+              target={settings.displayCurrency}
+              amounts={periodTotals.filter((t) => t.expenseMinor > 0).map((t) => ({ currency: t.currency, amountMinor: t.expenseMinor }))}
+            />
+          ) : null}
         </div>
       ) : null}
 
@@ -261,7 +299,7 @@ export function DashboardPage() {
             <CardDescription>{format.month(month)}</CardDescription>
             <CardAction>
               <Button variant="ghost" size="sm" asChild>
-                <Link to="/budgets">View all</Link>
+                <Link to={appPath('/budgets')}>View all</Link>
               </Button>
             </CardAction>
           </CardHeader>
@@ -272,7 +310,7 @@ export function DashboardPage() {
                 title="No budgets this month"
                 action={
                   <Button variant="outline" size="sm" asChild>
-                    <Link to="/budgets">Create a budget</Link>
+                    <Link to={appPath('/budgets')}>Create a budget</Link>
                   </Button>
                 }
               />
@@ -306,7 +344,7 @@ export function DashboardPage() {
             <CardDescription>Overdue and due in the next 14 days</CardDescription>
             <CardAction>
               <Button variant="ghost" size="sm" asChild>
-                <Link to="/bills">View all</Link>
+                <Link to={appPath('/bills')}>View all</Link>
               </Button>
             </CardAction>
           </CardHeader>
@@ -337,7 +375,7 @@ export function DashboardPage() {
             <CardTitle>Recent transactions</CardTitle>
             <CardAction>
               <Button variant="ghost" size="sm" asChild>
-                <Link to="/transactions">View all</Link>
+                <Link to={appPath('/transactions')}>View all</Link>
               </Button>
             </CardAction>
           </CardHeader>

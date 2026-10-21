@@ -1,5 +1,6 @@
-import { Loader2Icon, LogOutIcon, MailCheckIcon, RotateCcwIcon, Trash2Icon } from 'lucide-react'
-import { useState } from 'react'
+import { DoorOpenIcon, Loader2Icon, LogOutIcon, MailCheckIcon, RotateCcwIcon, Trash2Icon } from 'lucide-react'
+import { useState, type FormEvent } from 'react'
+import { Link } from 'react-router'
 import { toast } from 'sonner'
 import { useSession } from '@/app/session'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
@@ -19,6 +20,22 @@ export function AccountSection() {
   const [password, setPassword] = useState('')
   const [deleteError, setDeleteError] = useState<string>()
   const [sending, setSending] = useState(false)
+  const [name, setName] = useState(account.kind === 'firebase' ? (account.displayName ?? '') : '')
+  const [savingName, setSavingName] = useState(false)
+
+  const saveName = async (event: FormEvent) => {
+    event.preventDefault()
+    if (!session.updateDisplayName) return
+    setSavingName(true)
+    try {
+      await session.updateDisplayName(name)
+      toast.success('Name updated')
+    } catch (error) {
+      toast.error(friendlyError(error))
+    } finally {
+      setSavingName(false)
+    }
+  }
 
   if (account.kind === 'demo') {
     return (
@@ -32,6 +49,11 @@ export function AccountSection() {
         <CardContent className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={() => setConfirmReset(true)}>
             <RotateCcwIcon /> Reset sample data
+          </Button>
+          <Button variant="outline" asChild>
+            <Link to="/">
+              <DoorOpenIcon /> Exit demo
+            </Link>
           </Button>
           <Button variant="outline" className="text-destructive hover:text-destructive" onClick={() => setConfirmDelete(true)}>
             <Trash2Icon /> Clear all demo data
@@ -73,6 +95,16 @@ export function AccountSection() {
         <CardDescription>Your sign-in details and account controls.</CardDescription>
       </CardHeader>
       <CardContent className="grid gap-5">
+        {session.updateDisplayName ? (
+          <form onSubmit={saveName} className="flex flex-wrap items-end gap-2">
+            <FormField label="Name" className="min-w-56 flex-1">
+              <Input autoComplete="name" maxLength={60} value={name} onChange={(e) => setName(e.target.value)} />
+            </FormField>
+            <Button type="submit" variant="outline" disabled={savingName || name.trim() === (account.displayName ?? '')}>
+              {savingName ? <Loader2Icon className="animate-spin" /> : null} Save name
+            </Button>
+          </form>
+        ) : null}
         <dl className="grid gap-2 text-sm sm:grid-cols-[10rem_1fr]">
           <dt className="text-muted-foreground">Email</dt>
           <dd className="flex flex-wrap items-center gap-2 break-all">

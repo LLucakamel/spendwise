@@ -23,6 +23,8 @@ import {
   totalsByCurrency,
 } from '@/lib/finance'
 import { cn } from '@/lib/utils'
+import { ConvertedTotal } from '@/components/common/ConvertedTotal'
+import { BudgetPerformance, RecurringSummary } from './AnalyticsExtras'
 
 function ChangeCell({ current, previous, higherIsGood }: { current: number; previous: number; higherIsGood: boolean }) {
   const change = percentChange(current, previous)
@@ -40,7 +42,7 @@ export function AnalyticsPage() {
   const { transactions, settings } = useFinance()
   const format = useFormat()
   const lookup = useCategoryLookup()
-  const period = usePeriod('last-90-days')
+  const period = usePeriod('last-90-days', settings.weekStartsOn)
   const [categoryId, setCategoryId] = useState('')
   const [chosenCurrency, setChosenCurrency] = useState<string | null>(null)
 
@@ -312,8 +314,19 @@ export function AnalyticsPage() {
               </Table>
             </CardContent>
           </Card>
+          {totalsAll.length > 1 ? (
+            <ConvertedTotal
+              title="Net cash flow across currencies"
+              target={settings.displayCurrency}
+              amounts={totalsAll.map((t) => ({ currency: t.currency, amountMinor: t.netMinor }))}
+            />
+          ) : null}
         </div>
       )}
+      <div className="mt-4 grid gap-4 lg:grid-cols-2">
+        <BudgetPerformance />
+        <RecurringSummary />
+      </div>
     </>
   )
 }

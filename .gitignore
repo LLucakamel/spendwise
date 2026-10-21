@@ -11,7 +11,7 @@ node_modules/.tmp/
 .env
 .env.*
 !.env.example
-!.env.demo
+!.env.emulator
 
 # Firebase
 .firebase/

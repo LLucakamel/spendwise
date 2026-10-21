@@ -5,9 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "dev:demo": "vite --mode demo",
+    "dev:demo": "vite --open /#/demo",
     "build": "tsc -b && vite build",
-    "build:demo": "tsc -b && vite build --mode demo",
     "preview": "vite preview",
     "typecheck": "tsc -b --noEmit",
     "lint": "eslint .",
@@ -15,7 +14,9 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "test:rules": "firebase emulators:exec --only firestore,auth --project demo-spendwise \"vitest run --config vitest.rules.config.ts\"",
-    "check": "npm run typecheck && npm run lint && npm run test && npm run build"
+    "check": "npm run typecheck && npm run lint && npm run test && npm run build",
+    "test:coverage": "vitest run --coverage",
+    "test:e2e:firebase": "firebase emulators:exec --only auth,firestore --project demo-spendwise \"playwright test --config playwright.emulator.config.ts\""
   },
   "dependencies": {
     "@hookform/resolvers": "^5.9.2",
@@ -48,6 +49,7 @@
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.2",
+    "@vitest/coverage-v8": "^5.0.5",
     "eslint": "^10.13.0",
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.7",

@@ -1,42 +1,50 @@
 import { zodResolver } from '@hookform/resolvers/zod'
-import { Loader2Icon, MailIcon } from 'lucide-react'
+import { CheckCircle2Icon, CircleIcon, FlaskConicalIcon, Loader2Icon, MailIcon } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
-import { useForm } from 'react-hook-form'
+import { useForm, useWatch } from 'react-hook-form'
 import { Link, useLocation, useNavigate } from 'react-router'
-import { z } from 'zod'
 import { FormField } from '@/components/common/FormField'
+import { PasswordInput } from '@/components/common/PasswordInput'
 import { Logo } from '@/components/layout/Logo'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { getFirebaseServices } from '@/data/firebase/app'
 import { register as registerUser, requestPasswordReset, signIn } from '@/data/firebase/authService'
+import { APP_BASE } from '@/app/mode'
 import { errorCode, friendlyError } from '@/lib/errors'
-
-const email = z.string().trim().min(1, 'Enter your email address.').email('Enter a valid email address.')
-
-const loginSchema = z.object({ email, password: z.string().min(1, 'Enter your password.') })
-const registerSchema = z
-  .object({
-    email,
-    password: z.string().min(8, 'Use at least 8 characters.').max(128, 'Use at most 128 characters.'),
-    confirm: z.string(),
-  })
-  .refine((v) => v.password === v.confirm, { path: ['confirm'], message: 'The passwords don’t match.' })
-const resetSchema = z.object({ email })
+import { cn } from '@/lib/utils'
+import {
+  loginSchema,
+  PASSWORD_RULES,
+  registerSchema,
+  resetSchema,
+  type LoginValues,
+  type RegisterValues,
+  type ResetValues,
+} from './authSchemas'
 
 function AuthShell({ title, description, children, footer }: { title: string; description: string; children: ReactNode; footer: ReactNode }) {
   return (
     <main className="flex min-h-dvh flex-col items-center justify-center px-4 py-10">
-      <Logo className="mb-6" />
+      <Link to="/" aria-label="SpendWise home" className="mb-6 rounded-md outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50">
+        <Logo />
+      </Link>
       <Card className="w-full max-w-sm">
         <CardHeader>
-          <CardTitle className="text-xl">{title}</CardTitle>
+          <CardTitle className="text-xl">
+            <h1>{title}</h1>
+          </CardTitle>
           <CardDescription>{description}</CardDescription>
         </CardHeader>
         <CardContent>{children}</CardContent>
       </Card>
-      <div className="mt-4 text-center text-sm text-muted-foreground">{footer}</div>
+      <div className="mt-4 grid gap-2 text-center text-sm text-muted-foreground">
+        {footer}
+        <Link to="/demo" className="inline-flex items-center justify-center gap-1.5 text-xs hover:text-foreground">
+          <FlaskConicalIcon className="size-3.5" aria-hidden="true" /> Just looking? Try the demo with fictional data
+        </Link>
+      </div>
     </main>
   )
 }
@@ -50,18 +58,31 @@ function FormError({ message }: { message?: string }) {
   )
 }
 
+function SubmitButton({ pending, children }: { pending: boolean; children: ReactNode }) {
+  return (
+    <Button type="submit" disabled={pending} aria-busy={pending}>
+      {pending ? <Loader2Icon className="animate-spin" /> : null}
+      {children}
+    </Button>
+  )
+}
+
 export function LoginPage() {
   const navigate = useNavigate()
   const location = useLocation()
   const [error, setError] = useState<string>()
-  const { register, handleSubmit, formState } = useForm<z.input<typeof loginSchema>>({ resolver: zodResolver(loginSchema) })
-  const from = (location.state as { from?: string } | null)?.from ?? '/'
+  const { register, handleSubmit, formState } = useForm<LoginValues>({
+    resolver: zodResolver(loginSchema),
+    defaultValues: { email: '', password: '', remember: true },
+  })
+  const from = (location.state as { from?: string } | null)?.from
+  const target = from?.startsWith(APP_BASE) ? from : APP_BASE
 
   const onSubmit = handleSubmit(async (values) => {
     setError(undefined)
     try {
-      await signIn(getFirebaseServices().auth, values.email, values.password)
-      navigate(from, { replace: true })
+      await signIn(getFirebaseServices().auth, values.email, values.password, values.remember)
+      navigate(target, { replace: true })
     } catch (e) {
       setError(friendlyError(e, 'Sign-in failed. Please try again.'))
     }
@@ -72,12 +93,12 @@ export function LoginPage() {
       title="Sign in"
       description="Welcome back. Sign in to see your finances."
       footer={
-        <>
+        <p>
           New to SpendWise?{' '}
           <Link to="/register" className="font-medium text-primary hover:underline">
             Create an account
           </Link>
-        </>
+        </p>
       }
     >
       <form onSubmit={onSubmit} noValidate className="grid gap-4">
@@ -86,32 +107,55 @@ export function LoginPage() {
           <Input type="email" autoComplete="email" {...register('email')} />
         </FormField>
         <FormField label="Password" error={formState.errors.password?.message}>
-          <Input type="password" autoComplete="current-password" {...register('password')} />
+          <PasswordInput autoComplete="current-password" {...register('password')} />
         </FormField>
-        <div className="-mt-2 text-right">
-          <Link to="/forgot-password" className="text-sm text-primary hover:underline">
+        <div className="-mt-1 flex items-center justify-between gap-2 text-sm">
+          <label className="flex items-center gap-2">
+            <input type="checkbox" className="size-4 accent-[var(--primary)]" {...register('remember')} />
+            Keep me signed in
+          </label>
+          <Link to="/forgot-password" className="text-primary hover:underline">
             Forgot password?
           </Link>
         </div>
-        <Button type="submit" disabled={formState.isSubmitting}>
-          {formState.isSubmitting ? <Loader2Icon className="animate-spin" /> : null}
-          Sign in
-        </Button>
+        <SubmitButton pending={formState.isSubmitting}>Sign in</SubmitButton>
       </form>
     </AuthShell>
+  )
+}
+
+function PasswordChecklist({ password }: { password: string }) {
+  return (
+    <ul className="grid gap-1 text-xs" aria-label="Password requirements">
+      {PASSWORD_RULES.map((rule) => {
+        const ok = rule.test(password)
+        const Icon = ok ? CheckCircle2Icon : CircleIcon
+        return (
+          <li key={rule.id} className={cn('flex items-center gap-1.5', ok ? 'text-income' : 'text-muted-foreground')}>
+            <Icon className="size-3.5" aria-hidden="true" />
+            {rule.label}
+            <span className="sr-only">{ok ? '(met)' : '(not met)'}</span>
+          </li>
+        )
+      })}
+    </ul>
   )
 }
 
 export function RegisterPage() {
   const navigate = useNavigate()
   const [error, setError] = useState<string>()
-  const { register, handleSubmit, formState } = useForm<z.input<typeof registerSchema>>({ resolver: zodResolver(registerSchema) })
+  const { register, handleSubmit, formState, control } = useForm<RegisterValues>({
+    resolver: zodResolver(registerSchema),
+    defaultValues: { name: '', email: '', password: '', confirm: '', acceptPrivacy: false },
+  })
+  const password = useWatch({ control, name: 'password' }) ?? ''
 
   const onSubmit = handleSubmit(async (values) => {
     setError(undefined)
     try {
-      await registerUser(getFirebaseServices().auth, values.email, values.password)
-      navigate('/', { replace: true })
+      await registerUser(getFirebaseServices().auth, values.name, values.email, values.password)
+      navigate(APP_BASE, { replace: true })
     } catch (e) {
       setError(friendlyError(e, 'We couldn’t create your account. Please try again.'))
     }
@@ -122,29 +166,47 @@ export function RegisterPage() {
       title="Create your account"
       description="Track income, expenses, budgets and bills in one place."
       footer={
-        <>
+        <p>
           Already have an account?{' '}
           <Link to="/login" className="font-medium text-primary hover:underline">
             Sign in
           </Link>
-        </>
+        </p>
       }
     >
       <form onSubmit={onSubmit} noValidate className="grid gap-4">
         <FormError message={error} />
+        <FormField label="Name" error={formState.errors.name?.message}>
+          <Input autoComplete="name" {...register('name')} />
+        </FormField>
         <FormField label="Email" error={formState.errors.email?.message}>
           <Input type="email" autoComplete="email" {...register('email')} />
         </FormField>
-        <FormField label="Password" error={formState.errors.password?.message} hint="At least 8 characters.">
-          <Input type="password" autoComplete="new-password" {...register('password')} />
+        <FormField label="Password" error={formState.errors.password?.message}>
+          <PasswordInput autoComplete="new-password" {...register('password')} />
         </FormField>
+        <PasswordChecklist password={password} />
         <FormField label="Confirm password" error={formState.errors.confirm?.message}>
-          <Input type="password" autoComplete="new-password" {...register('confirm')} />
+          <PasswordInput autoComplete="new-password" {...register('confirm')} />
         </FormField>
-        <Button type="submit" disabled={formState.isSubmitting}>
-          {formState.isSubmitting ? <Loader2Icon className="animate-spin" /> : null}
-          Create account
-        </Button>
+        <div className="grid gap-1">
+          <label className="flex items-start gap-2 text-sm">
+            <input type="checkbox" className="mt-0.5 size-4 accent-[var(--primary)]" {...register('acceptPrivacy')} />
+            <span>
+              I’ve read the{' '}
+              <Link to="/privacy" className="font-medium text-primary hover:underline">
+                privacy notice
+              </Link>{' '}
+              and understand my records are stored in my SpendWise account.
+            </span>
+          </label>
+          {formState.errors.acceptPrivacy ? (
+            <p role="alert" className="text-xs font-medium text-destructive">
+              {formState.errors.acceptPrivacy.message}
+            </p>
+          ) : null}
+        </div>
+        <SubmitButton pending={formState.isSubmitting}>Create account</SubmitButton>
       </form>
     </AuthShell>
   )
@@ -153,7 +215,7 @@ export function RegisterPage() {
 export function ForgotPasswordPage() {
   const [sentTo, setSentTo] = useState<string>()
   const [error, setError] = useState<string>()
-  const { register, handleSubmit, formState } = useForm<z.input<typeof resetSchema>>({ resolver: zodResolver(resetSchema) })
+  const { register, handleSubmit, formState } = useForm<ResetValues>({ resolver: zodResolver(resetSchema), defaultValues: { email: '' } })
 
   const onSubmit = handleSubmit(async (values) => {
     setError(undefined)
@@ -191,10 +253,7 @@ export function ForgotPasswordPage() {
           <FormField label="Email" error={formState.errors.email?.message}>
             <Input type="email" autoComplete="email" {...register('email')} />
           </FormField>
-          <Button type="submit" disabled={formState.isSubmitting}>
-            {formState.isSubmitting ? <Loader2Icon className="animate-spin" /> : null}
-            Send reset link
-          </Button>
+          <SubmitButton pending={formState.isSubmitting}>Send reset link</SubmitButton>
         </form>
       )}
     </AuthShell>

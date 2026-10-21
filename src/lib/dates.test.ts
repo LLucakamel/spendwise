@@ -79,3 +79,17 @@ describe('formatDate', () => {
     expect(formatDate('2026-03-04', 'locale', 'en-US')).toBe('Mar 4, 2026')
   })
 })
+
+describe('this week', () => {
+  it('starts on the configured first day of the week', () => {
+    // 2026-03-04 is a Wednesday.
+    expect(presetRange('this-week', '2026-03-04', 1)).toEqual({ from: '2026-03-02', to: '2026-03-08' })
+    expect(presetRange('this-week', '2026-03-04', 0)).toEqual({ from: '2026-03-01', to: '2026-03-07' })
+    expect(presetRange('this-week', '2026-03-04', 6)).toEqual({ from: '2026-02-28', to: '2026-03-06' })
+  })
+
+  it('compares the elapsed days with the same days of last week', () => {
+    const range = presetRange('this-week', '2026-03-04', 1)
+    expect(comparisonRange('this-week', range, '2026-03-04')).toEqual({ from: '2026-02-23', to: '2026-02-25' })
+  })
+})

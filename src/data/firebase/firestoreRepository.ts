@@ -3,6 +3,9 @@ import {
   deleteDoc,
   doc,
   getDocs,
+  limit,
+  orderBy,
+  query,
   onSnapshot,
   runTransaction,
   serverTimestamp,
@@ -53,6 +56,12 @@ export const COLLECTIONS = ['categories', 'transactions', 'budgets', 'recurringB
 type CollectionName = (typeof COLLECTIONS)[number]
 
 const BATCH_LIMIT = 400
+
+/**
+ * Safety bound for the live transactions query (newest first). Personal histories are usually far
+ * smaller; if it is reached the UI says that the oldest records are not loaded.
+ */
+export const TRANSACTION_QUERY_LIMIT = 5000
 
 function toIso(value: unknown): string {
   if (value instanceof Timestamp) return value.toDate().toISOString()
@@ -128,6 +137,7 @@ export class FirestoreRepository implements DataRepository {
       budgets?: Budget[]
       recurringBills?: RecurringBill[]
       settings?: Settings | null
+      limitReached?: boolean
     } = {}
 
     const emit = () => {
@@ -139,14 +149,14 @@ export class FirestoreRepository implements DataRepository {
         return
       }
       transactions.sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt))
-      onData({ categories, transactions, budgets, recurringBills, settings })
+      onData({ categories, transactions, budgets, recurringBills, settings, transactionLimitReached: state.limitReached === true })
     }
 
-    const listen = <T>(name: CollectionName, schema: z.ZodType<T>, assign: (records: T[]) => void) =>
+    const listen = <T>(name: CollectionName, schema: z.ZodType<T>, assign: (records: T[], total: number) => void) =>
       onSnapshot(
-        this.col(name),
+        name === 'transactions' ? query(this.col(name), orderBy('date', 'desc'), limit(TRANSACTION_QUERY_LIMIT)) : this.col(name),
         (snapshot) => {
-          assign(snapshot.docs.map((d) => readRecord(d, schema, name)).filter((r): r is T => r !== null))
+          assign(snapshot.docs.map((d) => readRecord(d, schema, name)).filter((r): r is T => r !== null), snapshot.size)
           emit()
         },
         onError,
@@ -154,7 +164,10 @@ export class FirestoreRepository implements DataRepository {
 
     const unsubscribers = [
       listen('categories', categoryRecordSchema, (r) => (state.categories = r)),
-      listen('transactions', transactionRecordSchema, (r) => (state.transactions = r)),
+      listen('transactions', transactionRecordSchema, (r, total) => {
+        state.transactions = r
+        state.limitReached = total >= TRANSACTION_QUERY_LIMIT
+      }),
       listen('budgets', budgetRecordSchema, (r) => (state.budgets = r)),
       listen('recurringBills', recurringBillRecordSchema, (r) => (state.recurringBills = r)),
       onSnapshot(

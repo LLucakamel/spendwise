@@ -18,10 +18,11 @@ export interface DateRange {
   to: IsoDate
 }
 
-export const PERIOD_PRESETS = ['this-month', 'last-month', 'last-30-days', 'last-90-days', 'this-year', 'custom'] as const
+export const PERIOD_PRESETS = ['this-week', 'this-month', 'last-month', 'last-30-days', 'last-90-days', 'this-year', 'custom'] as const
 export type PeriodPreset = (typeof PERIOD_PRESETS)[number]
 
 export const PERIOD_PRESET_LABELS: Record<PeriodPreset, string> = {
+  'this-week': 'This week',
   'this-month': 'This month',
   'last-month': 'Last month',
   'last-30-days': 'Last 30 days',
@@ -88,9 +89,13 @@ export function rangeLengthDays(range: DateRange): number {
   return differenceInCalendarDays(fromIsoDate(range.to), fromIsoDate(range.from)) + 1
 }
 
-export function presetRange(preset: Exclude<PeriodPreset, 'custom'>, today: IsoDate): DateRange {
+export function presetRange(preset: Exclude<PeriodPreset, 'custom'>, today: IsoDate, weekStartsOn: WeekStart = 1): DateRange {
   const now = fromIsoDate(today)
   switch (preset) {
+    case 'this-week': {
+      const start = startOfWeek(now, { weekStartsOn })
+      return { from: toIsoDate(start), to: toIsoDate(addDays(start, 6)) }
+    }
     case 'this-month':
       return { from: toIsoDate(startOfMonth(now)), to: toIsoDate(endOfMonth(now)) }
     case 'last-month': {
@@ -114,6 +119,12 @@ export function presetRange(preset: Exclude<PeriodPreset, 'custom'>, today: IsoD
  */
 export function comparisonRange(preset: PeriodPreset, range: DateRange, today: IsoDate): DateRange {
   const from = fromIsoDate(range.from)
+  if (preset === 'this-week') {
+    const previousStart = addDays(from, -7)
+    // Compare the elapsed days of the current week with the same days of last week.
+    const elapsed = isInRange(today, range) ? differenceInCalendarDays(fromIsoDate(today), from) : 6
+    return { from: toIsoDate(previousStart), to: toIsoDate(addDays(previousStart, elapsed)) }
+  }
   if (preset === 'this-month' || preset === 'last-month') {
     const previousStart = subMonths(from, 1)
     const previousEnd = endOfMonth(previousStart)

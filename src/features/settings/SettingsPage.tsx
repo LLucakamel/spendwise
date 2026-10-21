@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { useLocation } from 'react-router'
+import { useSearchParams } from 'react-router'
 import { PageHeader } from '@/components/common/states'
 import { AccountSection } from './AccountSection'
 import { CategoryManager } from './CategoryManager'
@@ -8,10 +8,11 @@ import { OpeningBalancesSection } from './OpeningBalancesSection'
 import { AppearanceSection, PreferencesSection } from './PreferencesSection'
 
 export function SettingsPage() {
-  const { hash } = useLocation()
+  const [params] = useSearchParams()
+  const section = params.get('section')
   useEffect(() => {
-    if (hash) document.getElementById(hash.slice(1))?.scrollIntoView({ block: 'start' })
-  }, [hash])
+    if (section) document.getElementById(section)?.scrollIntoView({ block: 'start' })
+  }, [section])
 
   return (
     <>

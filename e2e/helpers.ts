@@ -21,8 +21,13 @@ export function statCard(page: Page, title: string): Locator {
   return page.locator('[data-slot="card"]').filter({ hasText: title }).locator('p.tracking-tight')
 }
 
+/** Opens a demo route, e.g. go(page, '/budgets') → /spendwise/#/demo/budgets. */
+export async function go(page: Page, path = '/') {
+  await page.goto(`./#/demo${path === '/' ? '' : path}`)
+}
+
 export async function gotoApp(page: Page, path = '/') {
-  await page.goto(path)
+  await go(page, path)
   await expect(page.getByText('Demo mode', { exact: false }).first()).toBeVisible()
 }
 
