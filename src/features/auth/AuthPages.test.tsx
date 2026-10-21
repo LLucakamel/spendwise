@@ -2,6 +2,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { TestProviders } from '@/test/providers'
 
 const authService = vi.hoisted(() => ({
   signIn: vi.fn(),
@@ -9,21 +10,25 @@ const authService = vi.hoisted(() => ({
   requestPasswordReset: vi.fn(),
 }))
 vi.mock('@/data/firebase/authService', () => authService)
-vi.mock('@/data/firebase/app', () => ({ getFirebaseServices: () => ({ auth: { name: 'test-auth' } }) }))
+vi.mock('@/data/firebase/app', () => ({
+  getFirebaseServices: () => ({ auth: { name: 'test-auth' } }),
+}))
 
 const { ForgotPasswordPage, LoginPage, RegisterPage } = await import('./AuthPages')
 
 function renderAt(path: string) {
   const user = userEvent.setup()
   render(
-    <MemoryRouter initialEntries={[path]}>
-      <Routes>
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/register" element={<RegisterPage />} />
-        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-        <Route path="/app" element={<p>Private dashboard</p>} />
-      </Routes>
-    </MemoryRouter>,
+    <TestProviders>
+      <MemoryRouter initialEntries={[path]}>
+        <Routes>
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/register" element={<RegisterPage />} />
+          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+          <Route path="/app" element={<p>Private dashboard</p>} />
+        </Routes>
+      </MemoryRouter>
+    </TestProviders>,
   )
   return user
 }
@@ -38,7 +43,7 @@ describe('RegisterPage', () => {
   it('validates every field before calling Firebase', async () => {
     const user = renderAt('/register')
     await user.click(screen.getByRole('button', { name: 'Create account' }))
-    expect(await screen.findByText('Enter your name.')).toBeInTheDocument()
+    expect(await screen.findByText('Enter a name.')).toBeInTheDocument()
     expect(screen.getByText('Enter your email address.')).toBeInTheDocument()
     expect(screen.getByText('Please confirm you’ve read the privacy notice.')).toBeInTheDocument()
     expect(authService.register).not.toHaveBeenCalled()

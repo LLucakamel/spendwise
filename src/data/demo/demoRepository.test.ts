@@ -10,8 +10,8 @@ describe('DemoRepository', () => {
     const data = await snapshot(repo)
     expect(data.transactions.length).toBeGreaterThan(0)
     const stored = JSON.parse(window.localStorage.getItem(DEMO_STORAGE_KEY) ?? '{}') as { version: number }
-    expect(stored.version).toBe(1)
-    expect(DEMO_STORAGE_KEY).toBe('spendwise.demo.v1')
+    expect(stored.version).toBe(2)
+    expect(DEMO_STORAGE_KEY).toBe('spendwise.demo.v2')
   })
 
   it('keeps changes across reloads (a new repository instance)', async () => {

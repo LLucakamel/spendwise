@@ -47,3 +47,12 @@ describe('Budgets', () => {
     expect((await snapshot(repository)).budgets).toHaveLength(1)
   })
 })
+
+describe('Budgets in Arabic', () => {
+  it('renders translated labels', async () => {
+    const data = emptyData({ budgets: [budget({ startMonth: monthOf(todayIso()) })] })
+    renderApp('/budgets', { ...data, settings: { ...data.settings, language: 'ar' } }, { language: 'ar' })
+    expect(await screen.findByRole('heading', { level: 1 })).not.toHaveTextContent('Budgets')
+    expect(screen.queryByText('On track')).not.toBeInTheDocument()
+  })
+})

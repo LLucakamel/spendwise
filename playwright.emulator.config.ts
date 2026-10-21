@@ -9,6 +9,8 @@ const PORT = 5174
 const channel = process.env.PW_CHANNEL === 'chromium' ? undefined : (process.env.PW_CHANNEL ?? 'msedge')
 
 export default defineConfig({
+  // Separate from the demo suite's output so both can run at the same time.
+  outputDir: 'test-results/emulator',
   testDir: './e2e-firebase',
   fullyParallel: false,
   workers: 1,

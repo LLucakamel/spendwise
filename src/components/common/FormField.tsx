@@ -1,5 +1,6 @@
 import { cloneElement, isValidElement, useId, type ReactElement, type ReactNode } from 'react'
 import { Label } from '@/components/ui/label'
+import { useI18n } from '@/i18n'
 import { cn } from '@/lib/utils'
 
 interface ControlProps {
@@ -8,7 +9,7 @@ interface ControlProps {
   'aria-describedby'?: string
 }
 
-/** Label + control + hint/error, wired up with matching ids for screen readers. */
+/** Label + control + hint/error, wired up with matching ids for screen readers. Errors may be translation keys. */
 export function FormField({
   label,
   error,
@@ -22,6 +23,7 @@ export function FormField({
   className?: string
   children: ReactElement<ControlProps>
 }) {
+  const { tx } = useI18n()
   const id = useId()
   const hintId = `${id}-hint`
   const errorId = `${id}-error`
@@ -40,7 +42,7 @@ export function FormField({
       ) : null}
       {error ? (
         <p id={errorId} role="alert" className="text-xs font-medium text-destructive">
-          {error}
+          {tx(error)}
         </p>
       ) : null}
     </div>

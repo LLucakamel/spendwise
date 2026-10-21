@@ -9,163 +9,178 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import { friendlyError } from '@/lib/errors'
+import { useFormat } from '@/hooks/use-format'
+import { useI18n, type MessageKey } from '@/i18n'
+import { errorKey } from '@/lib/errors'
 
-export function AccountSection() {
+function DemoAccountSection() {
+  const session = useSession()
+  const { t } = useI18n()
+  const [confirmReset, setConfirmReset] = useState(false)
+  const [confirmClear, setConfirmClear] = useState(false)
+
+  const run = async (action: () => Promise<void>, success: MessageKey) => {
+    try {
+      await action()
+      toast.success(t(success))
+      return true
+    } catch (error) {
+      toast.error(t(errorKey(error)))
+      return false
+    }
+  }
+
+  return (
+    <Card id="account" className="scroll-mt-6">
+      <CardHeader>
+        <CardTitle>{t('settings.demoTitle')}</CardTitle>
+        <CardDescription>{t('settings.demoText')}</CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-wrap gap-2">
+        <Button variant="outline" onClick={() => setConfirmReset(true)} data-testid="reset-demo">
+          <RotateCcwIcon /> {t('settings.resetDemo')}
+        </Button>
+        <Button variant="outline" asChild>
+          <Link to="/">
+            <DoorOpenIcon /> {t('settings.exitDemo')}
+          </Link>
+        </Button>
+        <Button variant="outline" className="text-destructive hover:text-destructive" onClick={() => setConfirmClear(true)} data-testid="clear-demo">
+          <Trash2Icon /> {t('settings.clearDemo')}
+        </Button>
+      </CardContent>
+      <ConfirmDialog
+        open={confirmReset}
+        onOpenChange={setConfirmReset}
+        title={t('settings.resetDemoTitle')}
+        description={<p>{t('settings.resetDemoText')}</p>}
+        confirmLabel={t('settings.reset')}
+        destructive={false}
+        onConfirm={() => run(() => session.resetDemo?.() ?? Promise.resolve(), 'settings.demoReset')}
+      />
+      <ConfirmDialog
+        open={confirmClear}
+        onOpenChange={setConfirmClear}
+        title={t('settings.clearDemoTitle')}
+        description={<p>{t('settings.clearDemoText')}</p>}
+        confirmLabel={t('settings.clearData')}
+        onConfirm={() => run(() => session.deleteAccount(''), 'settings.demoCleared')}
+      />
+    </Card>
+  )
+}
+
+function FirebaseAccountSection() {
   const session = useSession()
   const { account } = session
+  const { t } = useI18n()
+  const format = useFormat()
+  const savedName = account.kind === 'firebase' ? (account.displayName ?? '') : ''
   const [confirmSignOut, setConfirmSignOut] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
-  const [confirmReset, setConfirmReset] = useState(false)
   const [password, setPassword] = useState('')
   const [deleteError, setDeleteError] = useState<string>()
   const [sending, setSending] = useState(false)
-  const [name, setName] = useState(account.kind === 'firebase' ? (account.displayName ?? '') : '')
+  const [name, setName] = useState(savedName)
   const [savingName, setSavingName] = useState(false)
+
+  if (account.kind !== 'firebase') return null
 
   const saveName = async (event: FormEvent) => {
     event.preventDefault()
     if (!session.updateDisplayName) return
     setSavingName(true)
     try {
-      await session.updateDisplayName(name)
-      toast.success('Name updated')
+      await session.updateDisplayName(name.trim())
+      toast.success(t('settings.nameUpdated'))
     } catch (error) {
-      toast.error(friendlyError(error))
+      toast.error(t(errorKey(error)))
     } finally {
       setSavingName(false)
     }
   }
 
-  if (account.kind === 'demo') {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Demo session</CardTitle>
-          <CardDescription>
-            You’re exploring SpendWise with fictional data stored only in this browser. There is no account, and nothing is uploaded.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-wrap gap-2">
-          <Button variant="outline" onClick={() => setConfirmReset(true)}>
-            <RotateCcwIcon /> Reset sample data
-          </Button>
-          <Button variant="outline" asChild>
-            <Link to="/">
-              <DoorOpenIcon /> Exit demo
-            </Link>
-          </Button>
-          <Button variant="outline" className="text-destructive hover:text-destructive" onClick={() => setConfirmDelete(true)}>
-            <Trash2Icon /> Clear all demo data
-          </Button>
-        </CardContent>
-        <ConfirmDialog
-          open={confirmReset}
-          onOpenChange={setConfirmReset}
-          title="Reset the demo?"
-          description={<p>All demo changes are discarded and the original fictional sample data is restored.</p>}
-          confirmLabel="Reset"
-          destructive={false}
-          onConfirm={async () => {
-            await session.resetDemo?.()
-            toast.success('Demo data reset')
-            return true
-          }}
-        />
-        <ConfirmDialog
-          open={confirmDelete}
-          onOpenChange={setConfirmDelete}
-          title="Clear all demo data?"
-          description={<p>Removes every demo transaction, budget and bill so you can try SpendWise from an empty state. Default categories are kept.</p>}
-          confirmLabel="Clear data"
-          onConfirm={async () => {
-            await session.deleteAccount('')
-            toast.success('Demo data cleared')
-            return true
-          }}
-        />
-      </Card>
-    )
+  const sendVerification = async () => {
+    setSending(true)
+    try {
+      await session.resendVerification?.()
+      toast.success(t('settings.verificationSent'))
+    } catch (error) {
+      toast.error(t(errorKey(error)))
+    } finally {
+      setSending(false)
+    }
   }
 
+  const memberSince = account.createdAt ? new Date(account.createdAt) : null
+
   return (
-    <Card>
+    <Card id="account" className="scroll-mt-6">
       <CardHeader>
-        <CardTitle>Account</CardTitle>
-        <CardDescription>Your sign-in details and account controls.</CardDescription>
+        <CardTitle>{t('settings.account')}</CardTitle>
+        <CardDescription>{t('settings.accountText')}</CardDescription>
       </CardHeader>
       <CardContent className="grid gap-5">
         {session.updateDisplayName ? (
-          <form onSubmit={saveName} className="flex flex-wrap items-end gap-2">
-            <FormField label="Name" className="min-w-56 flex-1">
+          <form onSubmit={saveName} className="flex flex-wrap items-end gap-2" data-testid="display-name-form">
+            <FormField label={t('common.name')} className="min-w-56 flex-1">
               <Input autoComplete="name" maxLength={60} value={name} onChange={(e) => setName(e.target.value)} />
             </FormField>
-            <Button type="submit" variant="outline" disabled={savingName || name.trim() === (account.displayName ?? '')}>
-              {savingName ? <Loader2Icon className="animate-spin" /> : null} Save name
+            <Button type="submit" variant="outline" disabled={savingName || name.trim() === savedName}>
+              {savingName ? <Loader2Icon className="animate-spin" /> : null} {t('settings.saveName')}
             </Button>
           </form>
         ) : null}
         <dl className="grid gap-2 text-sm sm:grid-cols-[10rem_1fr]">
-          <dt className="text-muted-foreground">Email</dt>
+          <dt className="text-muted-foreground">{t('settings.email')}</dt>
           <dd className="flex flex-wrap items-center gap-2 break-all">
-            {account.email}
-            {account.emailVerified ? <Badge variant="outline">Verified</Badge> : <Badge variant="outline" className="text-warning">Not verified</Badge>}
+            <span dir="ltr">{account.email}</span>
+            {account.emailVerified ? (
+              <Badge variant="outline">{t('settings.verified')}</Badge>
+            ) : (
+              <Badge variant="outline" className="text-warning">
+                {t('settings.notVerified')}
+              </Badge>
+            )}
           </dd>
-          {account.createdAt ? (
+          {memberSince && !Number.isNaN(memberSince.getTime()) ? (
             <>
-              <dt className="text-muted-foreground">Member since</dt>
-              <dd>{new Date(account.createdAt).toLocaleDateString()}</dd>
+              <dt className="text-muted-foreground">{t('settings.memberSince')}</dt>
+              <dd>{memberSince.toLocaleDateString(format.locale, { dateStyle: 'medium' })}</dd>
             </>
           ) : null}
         </dl>
         <div className="flex flex-wrap gap-2">
           {!account.emailVerified && session.resendVerification ? (
-            <Button
-              variant="outline"
-              disabled={sending}
-              onClick={async () => {
-                setSending(true)
-                try {
-                  await session.resendVerification?.()
-                  toast.success('Verification email sent')
-                } catch (error) {
-                  toast.error(friendlyError(error))
-                } finally {
-                  setSending(false)
-                }
-              }}
-            >
-              {sending ? <Loader2Icon className="animate-spin" /> : <MailCheckIcon />} Send verification email
+            <Button variant="outline" disabled={sending} onClick={() => void sendVerification()}>
+              {sending ? <Loader2Icon className="animate-spin" /> : <MailCheckIcon />} {t('settings.sendVerification')}
             </Button>
           ) : null}
-          <Button variant="outline" onClick={() => setConfirmSignOut(true)}>
-            <LogOutIcon /> Sign out
+          <Button variant="outline" onClick={() => setConfirmSignOut(true)} data-testid="sign-out">
+            <LogOutIcon /> {t('settings.signOut')}
           </Button>
         </div>
         <div className="rounded-lg border border-destructive/30 p-4">
-          <p className="text-sm font-medium">Delete account</p>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Permanently deletes all of your transactions, budgets, bills, categories and settings, then your sign-in account. This can’t be undone.
-            Download a backup first if you want to keep your data.
-          </p>
-          <Button variant="destructive" className="mt-3" onClick={() => setConfirmDelete(true)}>
-            <Trash2Icon /> Delete account
+          <p className="text-sm font-medium">{t('settings.deleteAccount')}</p>
+          <p className="mt-1 text-sm text-muted-foreground">{t('settings.deleteAccountText')}</p>
+          <Button variant="destructive" className="mt-3" onClick={() => setConfirmDelete(true)} data-testid="delete-account">
+            <Trash2Icon /> {t('settings.deleteAccount')}
           </Button>
         </div>
       </CardContent>
       <ConfirmDialog
         open={confirmSignOut}
         onOpenChange={setConfirmSignOut}
-        title="Sign out?"
-        description={<p>You’ll need your email and password to sign in again.</p>}
-        confirmLabel="Sign out"
+        title={t('settings.signOutTitle')}
+        description={<p>{t('settings.signOutText')}</p>}
+        confirmLabel={t('settings.signOut')}
         destructive={false}
         onConfirm={async () => {
           try {
             await session.signOut()
             return true
           } catch (error) {
-            toast.error(friendlyError(error))
+            toast.error(t(errorKey(error)))
             return false
           }
         }}
@@ -179,28 +194,33 @@ export function AccountSection() {
             setDeleteError(undefined)
           }
         }}
-        title="Delete your account permanently?"
-        description={<p>Enter your password to confirm. All of your SpendWise data will be erased.</p>}
-        confirmLabel="Delete everything"
+        title={t('settings.deleteAccountTitle')}
+        description={<p>{t('settings.deleteAccountConfirm')}</p>}
+        confirmLabel={t('settings.deleteEverything')}
         onConfirm={async () => {
           if (!password) {
-            setDeleteError('Enter your password.')
+            setDeleteError('validation.passwordRequired')
             return false
           }
           try {
             await session.deleteAccount(password)
-            toast.success('Your account and data were deleted')
+            toast.success(t('settings.accountDeleted'))
             return true
           } catch (error) {
-            setDeleteError(friendlyError(error))
+            setDeleteError(errorKey(error))
             return false
           }
         }}
       >
-        <FormField label="Password" error={deleteError}>
-          <Input type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} />
+        <FormField label={t('auth.password')} error={deleteError}>
+          <Input type="password" autoComplete="current-password" dir="ltr" value={password} onChange={(e) => setPassword(e.target.value)} />
         </FormField>
       </ConfirmDialog>
     </Card>
   )
+}
+
+export function AccountSection() {
+  const { account } = useSession()
+  return account.kind === 'demo' ? <DemoAccountSection /> : <FirebaseAccountSection />
 }

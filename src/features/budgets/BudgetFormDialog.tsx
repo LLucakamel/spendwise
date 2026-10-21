@@ -13,6 +13,7 @@ import { useFinance } from '@/data/DataProvider'
 import { budgetFormSchema, type BudgetFormValues } from '@/domain/schemas'
 import type { Budget, BudgetInput } from '@/domain/types'
 import { useMutation } from '@/hooks/use-mutation'
+import { useI18n } from '@/i18n'
 import { monthOf, todayIso } from '@/lib/dates'
 import { budgetsOverlap } from '@/lib/finance'
 import { minorToDecimalString, parseAmountToMinor } from '@/lib/money'
@@ -20,8 +21,9 @@ import { minorToDecimalString, parseAmountToMinor } from '@/lib/money'
 function BudgetForm({ budget, onDone }: { budget?: Budget; onDone(): void }) {
   const repo = useRepository()
   const { settings, categories, budgets } = useFinance()
+  const { t } = useI18n()
   const [id] = useState(() => budget?.id ?? repo.newId())
-  const form = useForm<BudgetFormValues>({
+  const { register, handleSubmit, formState, setError } = useForm<BudgetFormValues>({
     resolver: zodResolver(budgetFormSchema),
     defaultValues: budget
       ? {
@@ -43,12 +45,11 @@ function BudgetForm({ budget, onDone }: { budget?: Budget; onDone(): void }) {
           notes: '',
         },
   })
-  const { register, handleSubmit, formState, setError } = form
   const errors = formState.errors
-  const save = useMutation(
-    (input: BudgetInput) => (budget ? repo.updateBudget(id, input) : repo.createBudget(id, input)),
-    { success: budget ? 'Budget updated' : 'Budget created', errorPrefix: 'Couldn’t save the budget.' },
-  )
+  const save = useMutation((input: BudgetInput) => (budget ? repo.updateBudget(id, input) : repo.createBudget(id, input)), {
+    success: budget ? 'budgets.form.updated' : 'budgets.form.created',
+    errorPrefix: 'toast.couldNotSave',
+  })
 
   const onSubmit = handleSubmit(async (values) => {
     const limit = parseAmountToMinor(values.limit, values.currency)
@@ -64,9 +65,7 @@ function BudgetForm({ budget, onDone }: { budget?: Budget; onDone(): void }) {
     }
     const conflict = budgets.find((b) => b.id !== id && budgetsOverlap(b, input))
     if (conflict) {
-      setError('categoryId', {
-        message: `“${conflict.name}” already budgets this category in ${input.currency} for an overlapping period. Edit that budget or change the months, so expenses aren’t counted twice.`,
-      })
+      setError('categoryId', { message: t('budgets.form.overlap', { name: conflict.name, currency: input.currency }) })
       return
     }
     const outcome = await save.run(input)
@@ -75,38 +74,38 @@ function BudgetForm({ budget, onDone }: { budget?: Budget; onDone(): void }) {
 
   return (
     <form onSubmit={onSubmit} noValidate className="grid gap-4">
-      <FormField label="Name" error={errors.name?.message}>
-        <Input autoComplete="off" placeholder="e.g. Groceries" {...register('name')} />
+      <FormField label={t('common.name')} error={errors.name?.message}>
+        <Input autoComplete="off" dir="auto" placeholder={t('budgets.form.namePlaceholder')} {...register('name')} />
       </FormField>
-      <FormField label="Expense category" error={errors.categoryId?.message} hint="Only expenses in this category count toward the budget.">
+      <FormField label={t('budgets.form.category')} error={errors.categoryId?.message} hint={t('budgets.form.categoryHint')}>
         <CategorySelect type="expense" {...register('categoryId')} />
       </FormField>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-[1fr_1.3fr]">
-        <FormField label="Monthly limit" error={errors.limit?.message}>
-          <Input inputMode="decimal" autoComplete="off" placeholder="0.00" className="tabular" {...register('limit')} />
+        <FormField label={t('budgets.form.limit')} error={errors.limit?.message}>
+          <Input inputMode="decimal" dir="ltr" autoComplete="off" placeholder="0.00" className="tabular" {...register('limit')} />
         </FormField>
-        <FormField label="Currency" error={errors.currency?.message} hint="Only expenses in this currency are counted.">
+        <FormField label={t('common.currency')} error={errors.currency?.message} hint={t('budgets.form.currencyHint')}>
           <CurrencySelect {...register('currency')} />
         </FormField>
       </div>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <FormField label="First month" error={errors.startMonth?.message}>
+        <FormField label={t('budgets.form.firstMonth')} error={errors.startMonth?.message}>
           <Input type="month" {...register('startMonth')} />
         </FormField>
-        <FormField label="Last month (optional)" error={errors.endMonth?.message} hint="Leave empty for an ongoing budget.">
+        <FormField label={t('budgets.form.lastMonth')} error={errors.endMonth?.message} hint={t('budgets.form.lastMonthHint')}>
           <Input type="month" {...register('endMonth')} />
         </FormField>
       </div>
-      <FormField label="Notes (optional)" error={errors.notes?.message}>
-        <Textarea rows={2} {...register('notes')} />
+      <FormField label={t('common.notesOptional')} error={errors.notes?.message}>
+        <Textarea rows={2} dir="auto" {...register('notes')} />
       </FormField>
       <DialogFooter>
         <Button type="button" variant="outline" onClick={onDone} disabled={save.pending}>
-          Cancel
+          {t('common.cancel')}
         </Button>
         <Button type="submit" disabled={save.pending}>
           {save.pending ? <Loader2Icon className="animate-spin" /> : null}
-          {budget ? 'Save changes' : 'Create budget'}
+          {budget ? t('common.saveChanges') : t('budgets.form.submitNew')}
         </Button>
       </DialogFooter>
     </form>
@@ -114,12 +113,13 @@ function BudgetForm({ budget, onDone }: { budget?: Budget; onDone(): void }) {
 }
 
 export function BudgetFormDialog({ open, onOpenChange, budget }: { open: boolean; onOpenChange(open: boolean): void; budget?: Budget }) {
+  const { t } = useI18n()
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{budget ? 'Edit budget' : 'New monthly budget'}</DialogTitle>
-          <DialogDescription>Set a spending limit that applies to each month in the chosen range.</DialogDescription>
+          <DialogTitle>{budget ? t('budgets.form.editTitle') : t('budgets.form.newTitle')}</DialogTitle>
+          <DialogDescription>{t('budgets.form.text')}</DialogDescription>
         </DialogHeader>
         {open ? <BudgetForm budget={budget} onDone={() => onOpenChange(false)} /> : null}
       </DialogContent>

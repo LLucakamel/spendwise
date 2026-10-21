@@ -1,27 +1,31 @@
 import { Link } from 'react-router'
 import { useAppPath } from '@/app/session'
-import type { CategorySummary } from '@/lib/finance'
 import { useCategoryLookup, useFormat } from '@/hooks/use-format'
+import { useI18n } from '@/i18n'
+import type { CategorySummary } from '@/lib/finance'
 
 /**
- * Horizontal magnitude bars with direct labels (category, amount, share).
- * One hue encodes magnitude; the category's own colour is only a small identity dot beside its name.
+ * Horizontal magnitude bars with direct labels (category, amount, share). One hue encodes
+ * magnitude; the category's colour is only a small identity dot beside its name.
  */
 export function CategoryBars({
   items,
   currency,
   limit = 6,
   linkParams,
+  type = 'expense',
 }: {
   items: CategorySummary[]
   currency: string
   limit?: number
   /** When given, each row links to the transactions list filtered to that category. */
   linkParams?: Record<string, string>
+  type?: 'income' | 'expense'
 }) {
   const format = useFormat()
   const lookup = useCategoryLookup()
   const appPath = useAppPath()
+  const { t } = useI18n()
   const shown = items.slice(0, limit)
   const rest = items.slice(limit)
   const restTotal = rest.reduce((sum, i) => sum + i.totalMinor, 0)
@@ -38,7 +42,7 @@ export function CategoryBars({
           </span>
           <span className="shrink-0 tabular">
             {format.money(totalMinor, currency)}
-            <span className="ml-2 inline-block w-10 text-right text-xs text-muted-foreground">{Math.round(share * 100)}%</span>
+            <span className="ms-2 inline-block w-10 text-end text-xs text-muted-foreground">{format.number(Math.round(share * 100))}%</span>
           </span>
         </div>
         <div className="mt-1.5 h-2 rounded-full bg-muted" aria-hidden="true">
@@ -49,7 +53,7 @@ export function CategoryBars({
     return (
       <li key={key}>
         {href ? (
-          <Link to={href} className="block rounded-md p-1.5 -m-1.5 outline-none hover:bg-muted/60 focus-visible:ring-[3px] focus-visible:ring-ring/50">
+          <Link to={href} className="-m-1.5 block rounded-md p-1.5 outline-none hover:bg-muted/60 focus-visible:ring-[3px] focus-visible:ring-ring/50">
             {content}
           </Link>
         ) : (
@@ -68,10 +72,10 @@ export function CategoryBars({
           lookup.color(item.categoryId),
           item.totalMinor,
           item.share,
-          linkParams ? `${appPath('/transactions')}?${new URLSearchParams({ ...linkParams, category: item.categoryId, currency, type: 'expense' })}` : undefined,
+          linkParams ? `${appPath('/transactions')}?${new URLSearchParams({ ...linkParams, category: item.categoryId, currency, type })}` : undefined,
         ),
       )}
-      {rest.length > 0 ? row('other', `Other (${rest.length} categories)`, null, restTotal, restShare) : null}
+      {rest.length > 0 ? row('other', t('dashboard.other', { count: rest.length }), null, restTotal, restShare) : null}
     </ul>
   )
 }

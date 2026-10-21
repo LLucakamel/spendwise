@@ -13,19 +13,23 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
-    "test:rules": "firebase emulators:exec --only firestore,auth --project demo-spendwise \"vitest run --config vitest.rules.config.ts\"",
+    "test:rules": "firebase emulators:exec --only firestore,auth,storage --project demo-spendwise \"vitest run --config vitest.rules.config.ts\"",
     "check": "npm run typecheck && npm run lint && npm run test && npm run build",
     "test:coverage": "vitest run --coverage",
-    "test:e2e:firebase": "firebase emulators:exec --only auth,firestore --project demo-spendwise \"playwright test --config playwright.emulator.config.ts\""
+    "test:e2e:firebase": "firebase emulators:exec --only auth,firestore,storage --project demo-spendwise \"playwright test --config playwright.emulator.config.ts\""
   },
   "dependencies": {
     "@hookform/resolvers": "^5.9.2",
+    "@tesseract.js-data/ara": "^1.0.0",
+    "@tesseract.js-data/eng": "^1.0.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cn": "^0.5.0",
     "date-fns": "^4.4.0",
     "firebase": "^13.0.0",
+    "jsqr": "^1.4.0",
     "lucide-react": "^1.61.0",
+    "pdfjs-dist": "^6.4.299",
     "radix-ui": "^1.8.1",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
@@ -34,6 +38,7 @@
     "recharts": "^3.10.1",
     "sonner": "^2.0.8",
     "tailwind-merge": "^3.7.0",
+    "tesseract.js": "^7.0.0",
     "zod": "^4.6.7"
   },
   "devDependencies": {

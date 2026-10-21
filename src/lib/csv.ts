@@ -1,5 +1,4 @@
-import type { Category, Transaction } from '@/domain/types'
-import { PAYMENT_METHOD_LABELS } from '@/domain/types'
+import type { Transaction } from '@/domain/types'
 import { minorToDecimalString } from './money'
 
 /** UTF-8 byte order mark, so spreadsheet apps detect the encoding. */
@@ -32,30 +31,49 @@ export const TRANSACTION_CSV_HEADER = [
   'Category',
   'Amount',
   'Currency',
+  'Account',
+  'To account',
   'Payment method',
+  'Reference',
+  'Source',
+  'Reconciled',
   'Notes',
   'ID',
   'Created at',
   'Updated at',
 ] as const
 
-export function transactionsToCsv(transactions: readonly Transaction[], categories: readonly Category[]): string {
-  const names = new Map(categories.map((c) => [c.id, c.name]))
+export interface CsvNames {
+  category(id: string): string
+  account(id: string | null): string
+}
+
+/** Exports transactions; amounts are exact decimal strings in each transaction's own currency. */
+export function transactionsToCsv(transactions: readonly Transaction[], names: CsvNames): string {
   const rows = transactions.map((t) => [
     t.date,
     t.type,
     t.description,
-    names.get(t.categoryId) ?? 'Uncategorized',
-    // Amounts are written as plain decimal strings in the transaction's own currency.
+    t.type === 'transfer' ? '' : names.category(t.categoryId),
     minorToDecimalString(t.amountMinor, t.currency),
     t.currency,
-    t.paymentMethod ? PAYMENT_METHOD_LABELS[t.paymentMethod] : '',
+    t.accountId ? names.account(t.accountId) : '',
+    t.toAccountId ? names.account(t.toAccountId) : '',
+    t.paymentMethod ?? '',
+    t.sourceRef ?? '',
+    t.origin,
+    t.reconciled ? 'yes' : 'no',
     t.notes,
     t.id,
     t.createdAt,
     t.updatedAt,
   ])
   return toCsv(rows, TRANSACTION_CSV_HEADER)
+}
+
+/** Generic CSV export for other record lists (income, invoices). */
+export function recordsToCsv(header: readonly string[], rows: readonly (readonly (string | number | null)[])[]): string {
+  return toCsv(rows, header)
 }
 
 /** Triggers a browser download. A UTF-8 BOM is added so spreadsheet apps detect the encoding. */

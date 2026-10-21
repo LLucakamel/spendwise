@@ -1,31 +1,32 @@
 import { z } from 'zod'
+import type { MessageKey } from '@/i18n'
 
-export const PASSWORD_RULES = [
-  { id: 'length', label: 'At least 8 characters', test: (p: string) => p.length >= 8 },
-  { id: 'letter', label: 'At least one letter', test: (p: string) => /[A-Za-z]/.test(p) },
-  { id: 'number', label: 'At least one number', test: (p: string) => /\d/.test(p) },
-] as const
+export const PASSWORD_RULES: { id: string; label: MessageKey; test: (p: string) => boolean }[] = [
+  { id: 'length', label: 'auth.ruleLength', test: (p) => p.length >= 8 },
+  { id: 'letter', label: 'auth.ruleLetter', test: (p) => /[A-Za-z؀-ۿ]/.test(p) },
+  { id: 'number', label: 'auth.ruleNumber', test: (p) => /\d/.test(p) },
+]
 
-const email = z.string().trim().min(1, 'Enter your email address.').pipe(z.email('Enter a valid email address.'))
+const email = z.string().trim().min(1, 'validation.emailRequired').pipe(z.email('validation.email'))
 
 export const loginSchema = z.object({
   email,
-  password: z.string().min(1, 'Enter your password.'),
+  password: z.string().min(1, 'validation.passwordRequired'),
   remember: z.boolean(),
 })
 
 export const registerSchema = z
   .object({
-    name: z.string().trim().min(1, 'Enter your name.').max(60, 'Keep your name under 60 characters.'),
+    name: z.string().trim().min(1, 'validation.nameRequired').max(60, 'validation.tooLong'),
     email,
     password: z
       .string()
-      .max(128, 'Use at most 128 characters.')
-      .refine((p) => PASSWORD_RULES.every((r) => r.test(p)), 'The password doesn’t meet the requirements below.'),
-    confirm: z.string().min(1, 'Confirm your password.'),
-    acceptPrivacy: z.boolean().refine((v) => v, 'Please confirm you’ve read the privacy notice.'),
+      .max(128, 'validation.passwordTooLong')
+      .refine((p) => PASSWORD_RULES.every((r) => r.test(p)), 'validation.passwordRules'),
+    confirm: z.string().min(1, 'validation.confirmRequired'),
+    acceptPrivacy: z.boolean().refine((v) => v, 'validation.privacyRequired'),
   })
-  .refine((v) => v.password === v.confirm, { path: ['confirm'], message: 'The passwords don’t match.' })
+  .refine((v) => v.password === v.confirm, { path: ['confirm'], message: 'validation.passwordMismatch' })
 
 export const resetSchema = z.object({ email })
 

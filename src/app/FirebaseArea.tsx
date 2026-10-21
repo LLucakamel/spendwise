@@ -10,6 +10,7 @@ import { getFirebaseServices, readFirebaseConfig } from '@/data/firebase/app'
 import { deleteAccount, resendVerification, signOut } from '@/data/firebase/authService'
 import { FirestoreRepository } from '@/data/firebase/firestoreRepository'
 import { ForgotPasswordPage, LoginPage, RegisterPage } from '@/features/auth/AuthPages'
+import { useI18n } from '@/i18n'
 import { appRoutes } from './AppRoutes'
 import { APP_BASE } from './mode'
 import { SessionContext, type Session } from './session'
@@ -25,41 +26,39 @@ function AuthProvider({ children }: { children: ReactNode }) {
     const { auth: firebaseAuth } = getFirebaseServices()
     // onIdTokenChanged also fires after token refreshes (e.g. after a profile update), so profile
     // changes such as the display name reach the UI.
-    return onIdTokenChanged(firebaseAuth, (user) =>
-      setAuth(user ? { status: 'signed-in', user, version: Date.now() } : { status: 'signed-out' }),
-    )
+    return onIdTokenChanged(firebaseAuth, (user) => setAuth(user ? { status: 'signed-in', user, version: Date.now() } : { status: 'signed-out' }))
   }, [])
   return <AuthContext.Provider value={auth}>{children}</AuthContext.Provider>
 }
 
 function FullScreenLoader() {
+  const { t } = useI18n()
   return (
     <div className="flex min-h-dvh flex-col items-center justify-center gap-4" aria-busy="true">
       <Logo />
-      <Loader2Icon className="size-5 animate-spin text-muted-foreground" aria-label="Loading" />
+      <Loader2Icon className="size-5 animate-spin text-muted-foreground" aria-label={t('common.loading')} />
     </div>
   )
 }
 
 /** Shown when this deployment has no Firebase configuration. It never switches to demo data on its own. */
 function SetupRequired({ missing }: { missing: string[] }) {
+  const { t } = useI18n()
   return (
     <main className="flex min-h-dvh items-center justify-center px-4 py-10">
       <Card className="w-full max-w-lg">
         <CardHeader>
           <Logo className="mb-2" />
-          <CardTitle>Accounts aren’t available on this deployment</CardTitle>
-          <CardDescription>
-            Sign-in and cloud storage need a Firebase project, and this build of SpendWise doesn’t have one configured.
-          </CardDescription>
+          <CardTitle>
+            <h1>{t('auth.setupTitle')}</h1>
+          </CardTitle>
+          <CardDescription>{t('auth.setupText')}</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4 text-sm">
           <div>
-            <p className="mb-1 font-medium">For the site owner</p>
-            <p className="text-muted-foreground">
-              Set these build variables (see <code>.env.example</code> and the README), then rebuild:
-            </p>
-            <ul className="mt-1 list-disc pl-5 font-mono text-xs">
+            <p className="mb-1 font-medium">{t('auth.setupOwner')}</p>
+            <p className="text-muted-foreground">{t('auth.setupVars')}</p>
+            <ul className="mt-1 list-disc ps-5 font-mono text-xs" dir="ltr">
               {missing.map((m) => (
                 <li key={m}>{m}</li>
               ))}
@@ -67,10 +66,10 @@ function SetupRequired({ missing }: { missing: string[] }) {
           </div>
           <div className="flex flex-wrap gap-2">
             <Button asChild>
-              <Link to="/demo">Try the demo instead</Link>
+              <Link to="/demo">{t('auth.setupDemo')}</Link>
             </Button>
             <Button variant="outline" asChild>
-              <Link to="/">Back to home</Link>
+              <Link to="/">{t('auth.backHome')}</Link>
             </Button>
           </div>
         </CardContent>
@@ -80,10 +79,10 @@ function SetupRequired({ missing }: { missing: string[] }) {
 }
 
 function SignedInSession({ user, version, children }: { user: User; version: number; children: ReactNode }) {
-  const { auth, db } = getFirebaseServices()
+  const { auth, db, storage } = getFirebaseServices()
   const [profileVersion, setProfileVersion] = useState(0)
   // One repository per user; it can only address users/{uid} for this uid.
-  const repository = useMemo(() => new FirestoreRepository(db, user.uid), [db, user.uid])
+  const repository = useMemo(() => new FirestoreRepository(db, user.uid, storage), [db, user.uid, storage])
   const updateDisplayName = useCallback(
     async (name: string) => {
       await updateProfile(user, { displayName: name.trim() || null })
@@ -104,12 +103,13 @@ function SignedInSession({ user, version, children }: { user: User; version: num
       },
       repository,
       basePath: APP_BASE,
+      cloudFiles: repository.cloudFiles,
       signOut: () => signOut(auth),
       deleteAccount: (password: string) => deleteAccount(user, password, repository),
       resendVerification: () => resendVerification(user),
       updateDisplayName,
     }),
-    // profileVersion re-reads the mutable User object after a profile update.
+    // profileVersion and version re-read the mutable User object after profile or token changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [auth, user, repository, updateDisplayName, profileVersion, version],
   )

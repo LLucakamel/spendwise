@@ -10,17 +10,15 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
+import { useI18n } from '@/i18n'
 
-/**
- * Confirmation for destructive actions. Stays open while the action runs and only closes
- * when it succeeds (the action returns true).
- */
+/** Confirmation for destructive actions. Stays open while the action runs and closes when it returns true. */
 export function ConfirmDialog({
   open,
   onOpenChange,
   title,
   description,
-  confirmLabel = 'Delete',
+  confirmLabel,
   destructive = true,
   onConfirm,
   children,
@@ -34,6 +32,7 @@ export function ConfirmDialog({
   onConfirm(): Promise<boolean>
   children?: ReactNode
 }) {
+  const { t } = useI18n()
   const [pending, setPending] = useState(false)
 
   const confirm = async () => {
@@ -56,10 +55,10 @@ export function ConfirmDialog({
         </AlertDialogHeader>
         {children}
         <AlertDialogFooter>
-          <AlertDialogCancel disabled={pending}>Cancel</AlertDialogCancel>
+          <AlertDialogCancel disabled={pending}>{t('common.cancel')}</AlertDialogCancel>
           <Button variant={destructive ? 'destructive' : 'default'} onClick={confirm} disabled={pending}>
             {pending ? <Loader2Icon className="animate-spin" /> : null}
-            {confirmLabel}
+            {confirmLabel ?? t('common.delete')}
           </Button>
         </AlertDialogFooter>
       </AlertDialogContent>

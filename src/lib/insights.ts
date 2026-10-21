@@ -1,13 +1,17 @@
-import type { Budget, IsoDate, IsoMonth, RecurringBill, Transaction } from '@/domain/types'
+import type { Budget, IncomeSource, IsoDate, IsoMonth, RecurringBill, Transaction } from '@/domain/types'
+import type { MessageKey } from '@/i18n'
 import { budgetAppliesToMonth, budgetUsage, categoryBreakdown, percentChange, totalsByCurrency } from './finance'
+import { expectedPayments } from './income'
 import { billTiming } from './recurring'
 
 export type InsightTone = 'positive' | 'warning' | 'neutral'
 
+/** A rule-based observation, rendered with `t(insight.key, insight.vars)`. */
 export interface Insight {
   id: string
   tone: InsightTone
-  text: string
+  key: MessageKey
+  vars: Record<string, string | number>
 }
 
 export interface InsightInput {
@@ -17,6 +21,8 @@ export interface InsightInput {
   allTransactions: readonly Transaction[]
   budgets: readonly Budget[]
   bills: readonly RecurringBill[]
+  /** Income sources, used to report overdue expected payments. */
+  incomeSources?: readonly IncomeSource[]
   month: IsoMonth
   today: IsoDate
   categoryName(id: string): string
@@ -40,24 +46,35 @@ export function computeInsights(input: InsightInput): Insight[] {
       insights.push({
         id: `budget-over-${budget.id}`,
         tone: 'warning',
-        text: `“${budget.name}” is over budget by ${money(-usage.remainingMinor, budget.currency)} this month.`,
+        key: 'insights.budgetOver',
+        vars: { name: budget.name, amount: money(-usage.remainingMinor, budget.currency) },
       })
     } else if (usage.health === 'warning') {
       insights.push({
         id: `budget-near-${budget.id}`,
         tone: 'warning',
-        text: `“${budget.name}” has used ${Math.round(usage.ratio * 100)}% of its monthly limit, with ${money(usage.remainingMinor, budget.currency)} left.`,
+        key: 'insights.budgetNear',
+        vars: { name: budget.name, percent: Math.round(usage.ratio * 100), amount: money(usage.remainingMinor, budget.currency) },
       })
     }
   }
 
   const overdue = input.bills.filter((b) => billTiming(b, input.today) === 'overdue')
-  if (overdue.length > 0) {
-    insights.push({
-      id: 'bills-overdue',
-      tone: 'warning',
-      text: overdue.length === 1 ? `“${overdue[0]?.name}” is overdue.` : `${overdue.length} recurring bills are overdue.`,
-    })
+  if (overdue.length === 1) {
+    insights.push({ id: 'bills-overdue', tone: 'warning', key: 'insights.billOverdue', vars: { name: overdue[0]?.name ?? '' } })
+  } else if (overdue.length > 1) {
+    insights.push({ id: 'bills-overdue', tone: 'warning', key: 'insights.billsOverdue', vars: { count: overdue.length } })
+  }
+
+  if (input.incomeSources && input.incomeSources.length > 0) {
+    // Everything due before today that hasn't been fully received.
+    const range = { from: input.today, to: input.today }
+    const overdueIncome = expectedPayments(input.incomeSources, input.allTransactions, range, input.today, true).filter(
+      (p) => p.occurrence.overdue,
+    )
+    if (overdueIncome.length > 0) {
+      insights.push({ id: 'income-overdue', tone: 'warning', key: 'insights.incomeOverdue', vars: { count: overdueIncome.length } })
+    }
   }
 
   const breakdown = categoryBreakdown(input.periodTransactions, currency, 'expense')
@@ -66,7 +83,8 @@ export function computeInsights(input: InsightInput): Insight[] {
     insights.push({
       id: 'top-category',
       tone: 'neutral',
-      text: `${categoryName(top.categoryId)} was your largest expense category: ${money(top.totalMinor, currency)} (${Math.round(top.share * 100)}% of ${currency} spending).`,
+      key: 'insights.topCategory',
+      vars: { category: categoryName(top.categoryId), amount: money(top.totalMinor, currency), percent: Math.round(top.share * 100), currency },
     })
   }
 
@@ -76,7 +94,8 @@ export function computeInsights(input: InsightInput): Insight[] {
       insights.push({
         id: 'spending-change',
         tone: change < 0 ? 'positive' : 'neutral',
-        text: `You spent ${Math.abs(Math.round(change))}% ${change < 0 ? 'less' : 'more'} in ${currency} than in the comparison period.`,
+        key: change < 0 ? 'insights.spentLess' : 'insights.spentMore',
+        vars: { percent: Math.abs(Math.round(change)), currency },
       })
     }
   }
@@ -85,7 +104,8 @@ export function computeInsights(input: InsightInput): Insight[] {
     insights.push({
       id: 'saved',
       tone: 'positive',
-      text: `You kept ${Math.round((current.netMinor / current.incomeMinor) * 100)}% of your ${currency} income in this period.`,
+      key: 'insights.kept',
+      vars: { percent: Math.round((current.netMinor / current.incomeMinor) * 100), currency },
     })
   }
 
@@ -96,7 +116,8 @@ export function computeInsights(input: InsightInput): Insight[] {
     insights.push({
       id: 'largest-expense',
       tone: 'neutral',
-      text: `Largest single expense: “${largest.description}” for ${money(largest.amountMinor, currency)}.`,
+      key: 'insights.largest',
+      vars: { name: largest.description, amount: money(largest.amountMinor, currency) },
     })
   }
 

@@ -19,6 +19,8 @@ export interface Session {
   repository: DataRepository
   /** Route prefix of the signed-in or demo area: "/app" or "/demo". */
   basePath: string
+  /** True when invoice files are stored in Cloud Storage; otherwise they stay on this device. */
+  cloudFiles: boolean
   signOut(): Promise<void>
   /** Firebase: deletes all data and the account (password required). Demo: empties the demo sandbox. */
   deleteAccount(password: string): Promise<void>

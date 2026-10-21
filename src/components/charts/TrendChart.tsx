@@ -1,43 +1,40 @@
-import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import type { TooltipContentProps } from 'recharts'
 import { useFormat } from '@/hooks/use-format'
-import { formatBucketLabel, type Granularity } from '@/lib/dates'
-import type { TimeBucket } from '@/lib/finance'
+import { useI18n } from '@/i18n'
 import { formatAxisValue, minorToNumber } from '@/lib/money'
 
-interface Row {
+export interface TrendPoint {
   label: string
-  value: number
   minor: number
 }
 
-/** Single-series line of spending over time (one currency). */
+/** Single-series line for one currency (spending trend, cash-flow estimate). */
 export function TrendChart({
-  buckets,
+  points,
   currency,
-  granularity,
   seriesLabel,
   height = 240,
+  zeroLine = false,
+  ariaLabel,
 }: {
-  buckets: TimeBucket[]
+  points: TrendPoint[]
   currency: string
-  granularity: Granularity
   seriesLabel: string
   height?: number
+  zeroLine?: boolean
+  ariaLabel?: string
 }) {
   const format = useFormat()
-  const data: Row[] = buckets.map((b) => ({
-    label: formatBucketLabel(b.start, granularity, format.locale),
-    value: minorToNumber(b.expenseMinor, currency),
-    minor: b.expenseMinor,
-  }))
+  const { t } = useI18n()
+  const data = points.map((p) => ({ ...p, value: minorToNumber(p.minor, currency) }))
 
   const renderTooltip = ({ active, payload }: TooltipContentProps) => {
-    const row = payload?.[0]?.payload as Row | undefined
+    const row = payload?.[0]?.payload as (TrendPoint & { value: number }) | undefined
     if (!active || !row) return null
     return (
       <div className="rounded-md border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-md">
-        <p className="mb-1 font-medium">{granularity === 'week' ? `Week of ${row.label}` : row.label}</p>
+        <p className="mb-1 font-medium">{row.label}</p>
         <p>
           {seriesLabel}: <span className="tabular font-medium">{format.money(row.minor, currency)}</span>
         </p>
@@ -46,18 +43,19 @@ export function TrendChart({
   }
 
   return (
-    <div style={{ height }} role="img" aria-label={`Line chart of ${seriesLabel.toLowerCase()} in ${currency} over time.`}>
+    <div style={{ height }} dir="ltr" role="img" aria-label={ariaLabel ?? t('charts.trendLabel', { series: seriesLabel, currency })}>
       <ResponsiveContainer width="100%" height="100%">
         <LineChart data={data} margin={{ top: 8, right: 8, left: 4, bottom: 0 }}>
           <CartesianGrid vertical={false} stroke="var(--chart-grid)" />
-          <XAxis dataKey="label" tickLine={false} axisLine={false} tick={{ fill: 'var(--muted-foreground)', fontSize: 11 }} minTickGap={12} />
+          <XAxis dataKey="label" tickLine={false} axisLine={false} tick={{ fill: 'var(--muted-foreground)', fontSize: 11 }} minTickGap={16} />
           <YAxis
             tickLine={false}
             axisLine={false}
-            width={64}
+            width={68}
             tick={{ fill: 'var(--muted-foreground)', fontSize: 11 }}
             tickFormatter={(value: number) => formatAxisValue(value, currency, format.locale)}
           />
+          {zeroLine ? <ReferenceLine y={0} stroke="var(--muted-foreground)" strokeDasharray="4 4" /> : null}
           <Tooltip content={renderTooltip} cursor={{ stroke: 'var(--muted-foreground)', strokeDasharray: '3 3' }} />
           <Line
             type="monotone"

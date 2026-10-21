@@ -79,10 +79,10 @@ describe('Transactions page', () => {
       }),
     )
     await user.type(await screen.findByLabelText('Search transactions'), 'greenleaf')
-    expect(screen.getByText(/1 of 2 transactions/)).toBeInTheDocument()
+    expect(screen.getByTestId('tx-count')).toHaveTextContent('1 of 2')
     await user.clear(screen.getByLabelText('Search transactions'))
     await user.selectOptions(screen.getByLabelText('Type'), 'income')
-    expect(screen.getByText(/1 of 2 transactions/)).toBeInTheDocument()
+    expect(screen.getByTestId('tx-count')).toHaveTextContent('1 of 2')
     await user.type(screen.getByLabelText('Search transactions'), 'nothing-like-this')
     expect(await screen.findByText('No matching transactions')).toBeInTheDocument()
   })

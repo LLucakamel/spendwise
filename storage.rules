@@ -1,0 +1,36 @@
+rules_version = '2';
+
+// SpendWise Cloud Storage Security Rules
+//
+// Invoice files are private: only the signed-in owner can upload, read or delete files under
+// users/{uid}/invoices/. Files are never publicly readable, and download URLs are not used by the app.
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /users/{uid}/invoices/{invoiceId}/{fileName} {
+      function isOwner() {
+        return request.auth != null && request.auth.uid == uid;
+      }
+
+      allow read, delete: if isOwner();
+
+      // New uploads only (no overwriting), 10 MB maximum, supported document types only.
+      allow create: if isOwner()
+        && invoiceId.matches('^[A-Za-z0-9_-]{1,128}$')
+        && fileName.matches('^[0-9a-f]{64}\\.[a-z0-9]{2,5}$')
+        && request.resource.size > 0
+        && request.resource.size <= 10 * 1024 * 1024
+        && request.resource.contentType.matches('^(image/(jpeg|png|webp)|application/(pdf|json|xml))$');
+    }
+
+    // The owner may list their own folders (names only), so "Delete all data" can find and remove
+    // every file. Reading contents is still limited to the invoice files above.
+    match /users/{uid}/{path=**} {
+      allow list: if request.auth != null && request.auth.uid == uid;
+    }
+
+    // Everything else is denied.
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

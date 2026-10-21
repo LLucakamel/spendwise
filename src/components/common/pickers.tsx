@@ -4,18 +4,19 @@ import { Label } from '@/components/ui/label'
 import { NativeSelect } from '@/components/ui/native-select'
 import { useFinance } from '@/data/DataProvider'
 import { currencyOptions } from '@/domain/currencies'
-import type { TransactionType } from '@/domain/types'
-import { PERIOD_PRESET_LABELS, PERIOD_PRESETS, type DateRange, type PeriodPreset } from '@/lib/dates'
+import { useCategoryLookup } from '@/hooks/use-format'
+import { useI18n } from '@/i18n'
+import { PERIOD_PRESETS, type DateRange, type PeriodPreset } from '@/lib/dates'
 import { cn } from '@/lib/utils'
 
 type SelectProps = Omit<ComponentProps<'select'>, 'children'>
 
 export function CurrencySelect({ allowAll, ...props }: SelectProps & { allowAll?: boolean }) {
-  const { settings } = useFinance()
-  const options = useMemo(() => currencyOptions(settings.locale), [settings.locale])
+  const { t, language } = useI18n()
+  const options = useMemo(() => currencyOptions(language === 'ar' ? 'ar' : 'en'), [language])
   return (
     <NativeSelect {...props}>
-      {allowAll ? <option value="">All currencies</option> : null}
+      {allowAll ? <option value="">{t('transactions.allCurrencies')}</option> : null}
       {options.map((o) => (
         <option key={o.code} value={o.code}>
           {o.label}
@@ -30,20 +31,23 @@ export function CategorySelect({
   allowAll,
   placeholder,
   ...props
-}: SelectProps & { type?: TransactionType; allowAll?: boolean; placeholder?: string }) {
+}: SelectProps & { type?: 'income' | 'expense'; allowAll?: boolean; placeholder?: string }) {
   const { categories } = useFinance()
+  const lookup = useCategoryLookup()
+  const { t } = useI18n()
   const visible = categories
     .filter((c) => !type || c.type === type)
-    .sort((a, b) => a.type.localeCompare(b.type) || a.name.localeCompare(b.name))
+    .map((c) => ({ ...c, label: lookup.name(c.id) }))
+    .sort((a, b) => a.label.localeCompare(b.label))
   const groups: [string, typeof visible][] = type
     ? [['', visible]]
     : [
-        ['Expense categories', visible.filter((c) => c.type === 'expense')],
-        ['Income categories', visible.filter((c) => c.type === 'income')],
+        [t('settings.expenseCategories'), visible.filter((c) => c.type === 'expense')],
+        [t('settings.incomeCategories'), visible.filter((c) => c.type === 'income')],
       ]
   return (
     <NativeSelect {...props}>
-      {allowAll ? <option value="">All categories</option> : null}
+      {allowAll ? <option value="">{t('transactions.allCategories')}</option> : null}
       {placeholder ? (
         <option value="" disabled>
           {placeholder}
@@ -54,18 +58,35 @@ export function CategorySelect({
           <optgroup key={label} label={label}>
             {items.map((c) => (
               <option key={c.id} value={c.id}>
-                {c.name}
+                {c.label}
               </option>
             ))}
           </optgroup>
         ) : (
           items.map((c) => (
             <option key={c.id} value={c.id}>
-              {c.name}
+              {c.label}
             </option>
           ))
         ),
       )}
+    </NativeSelect>
+  )
+}
+
+/** Account picker. `currency` limits the list to accounts in that currency. */
+export function AccountSelect({ allowNone = true, emptyLabel, currency, ...props }: SelectProps & { allowNone?: boolean; emptyLabel?: string; currency?: string }) {
+  const { accounts } = useFinance()
+  const { t } = useI18n()
+  const visible = accounts.filter((a) => !a.archived && (!currency || a.currency === currency))
+  return (
+    <NativeSelect {...props}>
+      {allowNone ? <option value="">{emptyLabel ?? t('common.noAccount')}</option> : null}
+      {visible.map((a) => (
+        <option key={a.id} value={a.id}>
+          {a.name} · {a.currency}
+        </option>
+      ))}
     </NativeSelect>
   )
 }
@@ -75,7 +96,6 @@ export interface PeriodValue {
   range: DateRange
 }
 
-/** Period preset selector with from/to inputs for a custom range. */
 export function PeriodPicker({
   value,
   onPresetChange,
@@ -87,21 +107,17 @@ export function PeriodPicker({
   onCustomChange(range: DateRange): void
   className?: string
 }) {
+  const { t } = useI18n()
   return (
     <div className={cn('flex flex-wrap items-end gap-2', className)}>
       <div className="grid gap-1">
         <Label htmlFor="period-preset" className="text-xs text-muted-foreground">
-          Period
+          {t('periods.label')}
         </Label>
-        <NativeSelect
-          id="period-preset"
-          value={value.preset}
-          onChange={(e) => onPresetChange(e.target.value as PeriodPreset)}
-          className="w-40"
-        >
+        <NativeSelect id="period-preset" value={value.preset} onChange={(e) => onPresetChange(e.target.value as PeriodPreset)} className="w-40">
           {PERIOD_PRESETS.map((p) => (
             <option key={p} value={p}>
-              {PERIOD_PRESET_LABELS[p]}
+              {t(`periods.${p}`)}
             </option>
           ))}
         </NativeSelect>
@@ -110,7 +126,7 @@ export function PeriodPicker({
         <>
           <div className="grid gap-1">
             <Label htmlFor="period-from" className="text-xs text-muted-foreground">
-              From
+              {t('periods.from')}
             </Label>
             <Input
               id="period-from"
@@ -123,7 +139,7 @@ export function PeriodPicker({
           </div>
           <div className="grid gap-1">
             <Label htmlFor="period-to" className="text-xs text-muted-foreground">
-              To
+              {t('periods.to')}
             </Label>
             <Input
               id="period-to"
@@ -141,20 +157,11 @@ export function PeriodPicker({
 }
 
 /** Segmented control to pick which currency a chart or summary shows. Hidden when only one exists. */
-export function CurrencySwitcher({
-  currencies,
-  value,
-  onChange,
-  label = 'Currency',
-}: {
-  currencies: string[]
-  value: string
-  onChange(currency: string): void
-  label?: string
-}) {
+export function CurrencySwitcher({ currencies, value, onChange, label }: { currencies: string[]; value: string; onChange(currency: string): void; label?: string }) {
+  const { t } = useI18n()
   if (currencies.length < 2) return null
   return (
-    <div role="radiogroup" aria-label={label} className="inline-flex flex-wrap gap-1 rounded-lg bg-muted p-1">
+    <div role="radiogroup" aria-label={label ?? t('dashboard.currencyShown')} className="inline-flex flex-wrap gap-1 rounded-lg bg-muted p-1">
       {currencies.map((c) => (
         <button
           key={c}

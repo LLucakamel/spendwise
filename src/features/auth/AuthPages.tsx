@@ -3,33 +3,33 @@ import { CheckCircle2Icon, CircleIcon, FlaskConicalIcon, Loader2Icon, MailIcon }
 import { useState, type ReactNode } from 'react'
 import { useForm, useWatch } from 'react-hook-form'
 import { Link, useLocation, useNavigate } from 'react-router'
+import { APP_BASE } from '@/app/mode'
 import { FormField } from '@/components/common/FormField'
 import { PasswordInput } from '@/components/common/PasswordInput'
 import { Logo } from '@/components/layout/Logo'
+import { LanguageThemeToggles } from '@/components/layout/PublicHeader'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { getFirebaseServices } from '@/data/firebase/app'
 import { register as registerUser, requestPasswordReset, signIn } from '@/data/firebase/authService'
-import { APP_BASE } from '@/app/mode'
-import { errorCode, friendlyError } from '@/lib/errors'
+import { useI18n, type MessageKey } from '@/i18n'
+import { errorCode, errorKey } from '@/lib/errors'
 import { cn } from '@/lib/utils'
-import {
-  loginSchema,
-  PASSWORD_RULES,
-  registerSchema,
-  resetSchema,
-  type LoginValues,
-  type RegisterValues,
-  type ResetValues,
-} from './authSchemas'
+import { loginSchema, PASSWORD_RULES, registerSchema, resetSchema, type LoginValues, type RegisterValues, type ResetValues } from './authSchemas'
 
 function AuthShell({ title, description, children, footer }: { title: string; description: string; children: ReactNode; footer: ReactNode }) {
+  const { t } = useI18n()
   return (
     <main className="flex min-h-dvh flex-col items-center justify-center px-4 py-10">
-      <Link to="/" aria-label="SpendWise home" className="mb-6 rounded-md outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50">
-        <Logo />
-      </Link>
+      <div className="mb-6 flex w-full max-w-sm items-center justify-between">
+        <Link to="/" aria-label="SpendWise" className="rounded-md outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50">
+          <Logo />
+        </Link>
+        <div className="flex items-center gap-1">
+          <LanguageThemeToggles />
+        </div>
+      </div>
       <Card className="w-full max-w-sm">
         <CardHeader>
           <CardTitle className="text-xl">
@@ -42,7 +42,7 @@ function AuthShell({ title, description, children, footer }: { title: string; de
       <div className="mt-4 grid gap-2 text-center text-sm text-muted-foreground">
         {footer}
         <Link to="/demo" className="inline-flex items-center justify-center gap-1.5 text-xs hover:text-foreground">
-          <FlaskConicalIcon className="size-3.5" aria-hidden="true" /> Just looking? Try the demo with fictional data
+          <FlaskConicalIcon className="size-3.5" aria-hidden="true" /> {t('auth.justLooking')}
         </Link>
       </div>
     </main>
@@ -68,13 +68,11 @@ function SubmitButton({ pending, children }: { pending: boolean; children: React
 }
 
 export function LoginPage() {
+  const { t } = useI18n()
   const navigate = useNavigate()
   const location = useLocation()
-  const [error, setError] = useState<string>()
-  const { register, handleSubmit, formState } = useForm<LoginValues>({
-    resolver: zodResolver(loginSchema),
-    defaultValues: { email: '', password: '', remember: true },
-  })
+  const [error, setError] = useState<MessageKey>()
+  const { register, handleSubmit, formState } = useForm<LoginValues>({ resolver: zodResolver(loginSchema), defaultValues: { email: '', password: '', remember: true } })
   const from = (location.state as { from?: string } | null)?.from
   const target = from?.startsWith(APP_BASE) ? from : APP_BASE
 
@@ -84,57 +82,58 @@ export function LoginPage() {
       await signIn(getFirebaseServices().auth, values.email, values.password, values.remember)
       navigate(target, { replace: true })
     } catch (e) {
-      setError(friendlyError(e, 'Sign-in failed. Please try again.'))
+      setError(errorKey(e, 'auth.signInFailed'))
     }
   })
 
   return (
     <AuthShell
-      title="Sign in"
-      description="Welcome back. Sign in to see your finances."
+      title={t('auth.signInTitle')}
+      description={t('auth.signInText')}
       footer={
         <p>
-          New to SpendWise?{' '}
+          {t('auth.newHere')}{' '}
           <Link to="/register" className="font-medium text-primary hover:underline">
-            Create an account
+            {t('landing.createAccount')}
           </Link>
         </p>
       }
     >
       <form onSubmit={onSubmit} noValidate className="grid gap-4">
-        <FormError message={error} />
-        <FormField label="Email" error={formState.errors.email?.message}>
-          <Input type="email" autoComplete="email" {...register('email')} />
+        <FormError message={error ? t(error) : undefined} />
+        <FormField label={t('auth.email')} error={formState.errors.email?.message}>
+          <Input type="email" autoComplete="email" dir="ltr" {...register('email')} />
         </FormField>
-        <FormField label="Password" error={formState.errors.password?.message}>
+        <FormField label={t('auth.password')} error={formState.errors.password?.message}>
           <PasswordInput autoComplete="current-password" {...register('password')} />
         </FormField>
         <div className="-mt-1 flex items-center justify-between gap-2 text-sm">
           <label className="flex items-center gap-2">
             <input type="checkbox" className="size-4 accent-[var(--primary)]" {...register('remember')} />
-            Keep me signed in
+            {t('auth.keepSignedIn')}
           </label>
           <Link to="/forgot-password" className="text-primary hover:underline">
-            Forgot password?
+            {t('auth.forgot')}
           </Link>
         </div>
-        <SubmitButton pending={formState.isSubmitting}>Sign in</SubmitButton>
+        <SubmitButton pending={formState.isSubmitting}>{t('auth.signIn')}</SubmitButton>
       </form>
     </AuthShell>
   )
 }
 
 function PasswordChecklist({ password }: { password: string }) {
+  const { t } = useI18n()
   return (
-    <ul className="grid gap-1 text-xs" aria-label="Password requirements">
+    <ul className="grid gap-1 text-xs" aria-label={t('auth.requirements')}>
       {PASSWORD_RULES.map((rule) => {
         const ok = rule.test(password)
         const Icon = ok ? CheckCircle2Icon : CircleIcon
         return (
           <li key={rule.id} className={cn('flex items-center gap-1.5', ok ? 'text-income' : 'text-muted-foreground')}>
             <Icon className="size-3.5" aria-hidden="true" />
-            {rule.label}
-            <span className="sr-only">{ok ? '(met)' : '(not met)'}</span>
+            {t(rule.label)}
+            <span className="sr-only">{ok ? t('auth.met') : t('auth.notMet')}</span>
           </li>
         )
       })}
@@ -143,13 +142,15 @@ function PasswordChecklist({ password }: { password: string }) {
 }
 
 export function RegisterPage() {
+  const { t, tx } = useI18n()
   const navigate = useNavigate()
-  const [error, setError] = useState<string>()
+  const [error, setError] = useState<MessageKey>()
   const { register, handleSubmit, formState, control } = useForm<RegisterValues>({
     resolver: zodResolver(registerSchema),
     defaultValues: { name: '', email: '', password: '', confirm: '', acceptPrivacy: false },
   })
   const password = useWatch({ control, name: 'password' }) ?? ''
+  const [before, after] = t('auth.acceptPrivacy').split('{link}')
 
   const onSubmit = handleSubmit(async (values) => {
     setError(undefined)
@@ -157,64 +158,65 @@ export function RegisterPage() {
       await registerUser(getFirebaseServices().auth, values.name, values.email, values.password)
       navigate(APP_BASE, { replace: true })
     } catch (e) {
-      setError(friendlyError(e, 'We couldn’t create your account. Please try again.'))
+      setError(errorKey(e, 'auth.registerFailed'))
     }
   })
 
   return (
     <AuthShell
-      title="Create your account"
-      description="Track income, expenses, budgets and bills in one place."
+      title={t('auth.registerTitle')}
+      description={t('auth.registerText')}
       footer={
         <p>
-          Already have an account?{' '}
+          {t('auth.haveAccount')}{' '}
           <Link to="/login" className="font-medium text-primary hover:underline">
-            Sign in
+            {t('auth.signIn')}
           </Link>
         </p>
       }
     >
       <form onSubmit={onSubmit} noValidate className="grid gap-4">
-        <FormError message={error} />
-        <FormField label="Name" error={formState.errors.name?.message}>
+        <FormError message={error ? t(error) : undefined} />
+        <FormField label={t('auth.name')} error={formState.errors.name?.message}>
           <Input autoComplete="name" {...register('name')} />
         </FormField>
-        <FormField label="Email" error={formState.errors.email?.message}>
-          <Input type="email" autoComplete="email" {...register('email')} />
+        <FormField label={t('auth.email')} error={formState.errors.email?.message}>
+          <Input type="email" autoComplete="email" dir="ltr" {...register('email')} />
         </FormField>
-        <FormField label="Password" error={formState.errors.password?.message}>
+        <FormField label={t('auth.password')} error={formState.errors.password?.message}>
           <PasswordInput autoComplete="new-password" {...register('password')} />
         </FormField>
         <PasswordChecklist password={password} />
-        <FormField label="Confirm password" error={formState.errors.confirm?.message}>
+        <FormField label={t('auth.confirmPassword')} error={formState.errors.confirm?.message}>
           <PasswordInput autoComplete="new-password" {...register('confirm')} />
         </FormField>
         <div className="grid gap-1">
           <label className="flex items-start gap-2 text-sm">
             <input type="checkbox" className="mt-0.5 size-4 accent-[var(--primary)]" {...register('acceptPrivacy')} />
             <span>
-              I’ve read the{' '}
+              {before}
               <Link to="/privacy" className="font-medium text-primary hover:underline">
-                privacy notice
-              </Link>{' '}
-              and understand my records are stored in my SpendWise account.
+                {t('auth.privacyLink')}
+              </Link>
+              {after}
             </span>
           </label>
           {formState.errors.acceptPrivacy ? (
             <p role="alert" className="text-xs font-medium text-destructive">
-              {formState.errors.acceptPrivacy.message}
+              {tx(formState.errors.acceptPrivacy.message)}
             </p>
           ) : null}
         </div>
-        <SubmitButton pending={formState.isSubmitting}>Create account</SubmitButton>
+        <SubmitButton pending={formState.isSubmitting}>{t('auth.createAccount')}</SubmitButton>
       </form>
     </AuthShell>
   )
 }
 
 export function ForgotPasswordPage() {
+  const { t } = useI18n()
   const [sentTo, setSentTo] = useState<string>()
-  const [error, setError] = useState<string>()
+  const [error, setError] = useState<MessageKey>()
   const { register, handleSubmit, formState } = useForm<ResetValues>({ resolver: zodResolver(resetSchema), defaultValues: { email: '' } })
 
   const onSubmit = handleSubmit(async (values) => {
@@ -225,35 +227,32 @@ export function ForgotPasswordPage() {
     } catch (e) {
       // Don't reveal whether an account exists for this address.
       if (errorCode(e) === 'auth/user-not-found') setSentTo(values.email)
-      else setError(friendlyError(e, 'We couldn’t send the reset email. Please try again.'))
+      else setError(errorKey(e, 'auth.resetFailed'))
     }
   })
 
   return (
     <AuthShell
-      title="Reset your password"
-      description="We’ll email you a link to choose a new password."
+      title={t('auth.resetTitle')}
+      description={t('auth.resetText')}
       footer={
         <Link to="/login" className="font-medium text-primary hover:underline">
-          Back to sign in
+          {t('auth.backToSignIn')}
         </Link>
       }
     >
       {sentTo ? (
         <div role="status" className="flex gap-3 text-sm">
           <MailIcon className="mt-0.5 size-5 shrink-0 text-primary" aria-hidden="true" />
-          <p>
-            If an account exists for <strong className="break-all">{sentTo}</strong>, a password reset link is on its way. Check your inbox and spam
-            folder.
-          </p>
+          <p>{t('auth.resetSent', { email: sentTo })}</p>
         </div>
       ) : (
         <form onSubmit={onSubmit} noValidate className="grid gap-4">
-          <FormError message={error} />
-          <FormField label="Email" error={formState.errors.email?.message}>
-            <Input type="email" autoComplete="email" {...register('email')} />
+          <FormError message={error ? t(error) : undefined} />
+          <FormField label={t('auth.email')} error={formState.errors.email?.message}>
+            <Input type="email" autoComplete="email" dir="ltr" {...register('email')} />
           </FormField>
-          <SubmitButton pending={formState.isSubmitting}>Send reset link</SubmitButton>
+          <SubmitButton pending={formState.isSubmitting}>{t('auth.sendReset')}</SubmitButton>
         </form>
       )}
     </AuthShell>

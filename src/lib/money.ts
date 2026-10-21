@@ -1,6 +1,13 @@
 import { minorUnitDigits } from '@/domain/currencies'
+import { normalizeDigits } from './text'
 
+/**
+ * Validation errors are translation keys, optionally followed by "|" and JSON parameters,
+ * e.g. `validation.amountDecimals|{"currency":"USD","digits":2}`. The UI translates them.
+ */
 export type ParseResult = { ok: true; value: number } | { ok: false; error: string }
+
+export const errorKey = (key: string, params?: Record<string, string | number>) => (params ? `${key}|${JSON.stringify(params)}` : key)
 
 /** Largest amount accepted for a single entry, in minor units. Keeps all sums far below 2^53. */
 export const MAX_AMOUNT_MINOR = 1_000_000_000_000
@@ -11,28 +18,23 @@ export const MAX_AMOUNT_MINOR = 1_000_000_000_000
  */
 export function parseAmountToMinor(input: string, currency: string): ParseResult {
   const digits = minorUnitDigits(currency)
-  const trimmed = input.trim().replace(/[\s_]/g, '')
-  if (trimmed === '') return { ok: false, error: 'Enter an amount.' }
+  const trimmed = normalizeDigits(input).trim().replace(/[\s_]/g, '')
+  if (trimmed === '') return { ok: false, error: errorKey('validation.amountRequired') }
   const match = /^(\d+)(?:[.,](\d*))?$/.exec(trimmed)
-  if (!match) {
-    return { ok: false, error: 'Enter a number such as 12.50, without currency symbols or thousands separators.' }
-  }
+  if (!match) return { ok: false, error: errorKey('validation.amountFormat') }
   const whole = match[1] ?? '0'
   const fraction = match[2] ?? ''
   if (fraction.length > digits) {
     return {
       ok: false,
-      error:
-        digits === 0
-          ? `${currency} amounts have no decimal places.`
-          : `${currency} allows at most ${digits} decimal places.`,
+      error: digits === 0 ? errorKey('validation.amountNoDecimals', { currency }) : errorKey('validation.amountDecimals', { currency, digits }),
     }
   }
   const normalized = (whole + fraction.padEnd(digits, '0')).replace(/^0+(?=\d)/, '')
-  if (normalized.length > 16) return { ok: false, error: 'Amount is too large.' }
+  if (normalized.length > 16) return { ok: false, error: errorKey('validation.amountTooLarge') }
   const value = Number(normalized)
-  if (!Number.isSafeInteger(value) || value > MAX_AMOUNT_MINOR) return { ok: false, error: 'Amount is too large.' }
-  if (value <= 0) return { ok: false, error: 'Amount must be greater than zero.' }
+  if (!Number.isSafeInteger(value) || value > MAX_AMOUNT_MINOR) return { ok: false, error: errorKey('validation.amountTooLarge') }
+  if (value <= 0) return { ok: false, error: errorKey('validation.amountPositive') }
   return { ok: true, value }
 }
 

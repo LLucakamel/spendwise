@@ -25,18 +25,23 @@ describe('escapeCsvField', () => {
 })
 
 describe('transactionsToCsv', () => {
-  it('writes a header, exact decimal amounts and category names', () => {
+  const names = { category: (id: string) => (id === 'exp-groceries' ? 'Groceries' : 'Uncategorized'), account: (id: string | null) => (id === 'acc-1' ? 'Bank' : '') }
+
+  it('writes a header, exact decimal amounts, category and account names', () => {
     const csv = transactionsToCsv(
       [
-        tx({ id: 'a', description: 'Coffee, beans', amountMinor: 1250, date: '2026-03-02', notes: 'said "hi"' }),
+        tx({ id: 'a', description: 'Coffee, beans', amountMinor: 1250, date: '2026-03-02', notes: 'said "hi"', accountId: 'acc-1' }),
         tx({ id: 'b', type: 'income', description: 'Bonus', amountMinor: 1500, currency: 'JPY', categoryId: 'missing' }),
+        tx({ id: 'c', type: 'transfer', description: 'To savings', amountMinor: 500, categoryId: 'transfer', accountId: 'acc-1', toAccountId: 'acc-2' }),
       ],
-      [{ id: 'exp-groceries', name: 'Groceries', type: 'expense', color: '#000000', createdAt: '', updatedAt: '' }],
+      names,
     )
     const lines = csv.trimEnd().split('\r\n')
-    expect(lines[0]).toBe('Date,Type,Description,Category,Amount,Currency,Payment method,Notes,ID,Created at,Updated at')
-    expect(lines[1]).toBe('2026-03-02,expense,"Coffee, beans",Groceries,12.50,USD,,"said ""hi""",a,2026-03-15T10:00:00.000Z,2026-03-15T10:00:00.000Z')
+    expect(lines[0]).toBe('Date,Type,Description,Category,Amount,Currency,Account,To account,Payment method,Reference,Source,Reconciled,Notes,ID,Created at,Updated at')
+    expect(lines[1]).toContain('2026-03-02,expense,"Coffee, beans",Groceries,12.50,USD,Bank,')
+    expect(lines[1]).toContain('"said ""hi""",a,')
     expect(lines[2]).toContain('income,Bonus,Uncategorized,1500,JPY')
+    expect(lines[3]).toContain('transfer,To savings,,5.00,USD,Bank,')
     expect(csv.endsWith('\r\n')).toBe(true)
   })
 })

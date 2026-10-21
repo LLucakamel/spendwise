@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { budget, tx } from '@/test/factories'
+import type { Account } from '@/domain/types'
 import {
+  accountBalances,
   balancesByCurrency,
   budgetAppliesToMonth,
   budgetsOverlap,
@@ -19,7 +21,7 @@ describe('totalsByCurrency', () => {
       tx({ amountMinor: 1999 }),
       tx({ amountMinor: 1 }),
     ])
-    expect(totals).toEqual([{ currency: 'USD', incomeMinor: 500000, expenseMinor: 2000, netMinor: 498000, count: 3 }])
+    expect(totals).toEqual([{ currency: 'USD', incomeMinor: 500000, expenseMinor: 2000, netMinor: 498000, refundMinor: 0, count: 3 }])
   })
 
   it('never adds amounts in different currencies together', () => {
@@ -175,5 +177,37 @@ describe('percentChange', () => {
     expect(percentChange(100, 0)).toBeNull()
     expect(percentChange(150, 100)).toBe(50)
     expect(percentChange(-50, -100)).toBe(50)
+  })
+})
+
+describe('transfers and refunds', () => {
+  const account = (id: string, kind: Account['kind'], openingBalanceMinor = 0): Account =>
+    ({ id, name: id, kind, provider: '', currency: 'EGP', openingBalanceMinor, last4: '', syncMode: 'manual', creditLimitMinor: kind === 'credit-card' ? 100000 : null, statementDay: null, paymentDueDay: null, minimumPaymentMinor: null, archived: false, notes: '', createdAt: '', updatedAt: '' }) as Account
+
+  it('never counts a transfer between own accounts as income or expense', () => {
+    const totals = totalsByCurrency([
+      tx({ type: 'income', amountMinor: 10000, currency: 'EGP' }),
+      tx({ type: 'transfer', amountMinor: 4000, currency: 'EGP', categoryId: 'transfer', accountId: 'bank', toAccountId: 'cash' }),
+    ])
+    expect(totals[0]).toMatchObject({ incomeMinor: 10000, expenseMinor: 0, netMinor: 10000 })
+  })
+
+  it('treats a refund as reduced spending, not income', () => {
+    const totals = totalsByCurrency([tx({ type: 'expense', amountMinor: 5000, currency: 'EGP' }), tx({ type: 'refund', amountMinor: 1500, currency: 'EGP' })])
+    expect(totals[0]).toMatchObject({ incomeMinor: 0, expenseMinor: 3500, refundMinor: 1500, netMinor: -3500 })
+  })
+
+  it('moves money between accounts and reduces card debt on repayment', () => {
+    const accounts = [account('bank', 'bank', 50000), account('card', 'credit-card')]
+    const balances = accountBalances(
+      accounts,
+      [
+        tx({ type: 'expense', amountMinor: 20000, currency: 'EGP', accountId: 'card', date: '2026-03-01' }),
+        tx({ type: 'transfer', amountMinor: 15000, currency: 'EGP', categoryId: 'transfer', accountId: 'bank', toAccountId: 'card', date: '2026-03-02' }),
+      ],
+      '2026-03-31',
+    )
+    expect(balances.find((b) => b.accountId === 'bank')?.balanceMinor).toBe(35000)
+    expect(balances.find((b) => b.accountId === 'card')).toMatchObject({ owedMinor: 5000, availableCreditMinor: 95000 })
   })
 })

@@ -8,7 +8,7 @@ import { SessionContext, type Session } from './session'
 
 /**
  * Demo mode, entered only through the explicit "Try the demo" link (/demo).
- * Fictional data lives in this browser's localStorage; this module has no Firebase code.
+ * Fictional data lives in this browser's localStorage and IndexedDB; this module has no Firebase code.
  */
 export default function DemoArea() {
   const [repository] = useState(() => new DemoRepository())
@@ -18,6 +18,7 @@ export default function DemoArea() {
       account: { kind: 'demo' },
       repository,
       basePath: DEMO_BASE,
+      cloudFiles: false,
       signOut: async () => undefined,
       deleteAccount: () => repository.deleteAllData(),
       resetDemo: () => repository.resetToSample(),

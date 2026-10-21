@@ -2,10 +2,10 @@ rules_version = '2';
 
 // SpendWise Firestore Security Rules
 //
-// Every record lives under users/{uid}/... and is readable and writable only by the
-// signed-in user whose UID matches {uid}. Anything not matched below is denied.
-// Writes are validated so a modified client cannot store malformed financial data,
-// forge timestamps or create duplicate bill payments.
+// Every record lives under users/{uid}/... and is readable and writable only by the signed-in
+// user whose UID matches {uid} (request.auth.uid — never a client-supplied field). Anything not
+// matched below is denied. Writes are validated so a modified client cannot store malformed
+// financial data, forge timestamps, or create duplicate bill payments, income receipts or imports.
 service cloud.firestore {
   match /databases/{database}/documents {
 
@@ -19,8 +19,16 @@ service cloud.firestore {
       return v is string && v.matches('^[A-Za-z0-9_-]{1,128}$');
     }
 
+    function isOptId(v) {
+      return v == null || isId(v);
+    }
+
     function isDate(v) {
       return v is string && v.matches('^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$');
+    }
+
+    function isOptDate(v) {
+      return v == null || isDate(v);
     }
 
     function isMonth(v) {
@@ -36,12 +44,32 @@ service cloud.firestore {
       return v is int && v > 0 && v <= 1000000000000;
     }
 
+    function isOptAmount(v) {
+      return v == null || (v is int && v >= 0 && v <= 1000000000000);
+    }
+
+    function isSigned(v) {
+      return v is int && v >= -1000000000000 && v <= 1000000000000;
+    }
+
+    function isDay(v) {
+      return v is int && v >= 1 && v <= 31;
+    }
+
+    function isOptDay(v) {
+      return v == null || isDay(v);
+    }
+
     function isName(v, max) {
       return v is string && v.size() >= 1 && v.size() <= max;
     }
 
     function isText(v, max) {
       return v is string && v.size() <= max;
+    }
+
+    function isPaymentMethod(v) {
+      return v == null || v in ['cash', 'debit-card', 'credit-card', 'bank-transfer', 'instapay', 'mobile-wallet', 'paypal', 'other'];
     }
 
     function createdNow() {
@@ -62,23 +90,37 @@ service cloud.firestore {
 
     function validTransaction(d, id) {
       return hasExactly(d, ['type', 'description', 'amountMinor', 'currency', 'categoryId', 'date', 'notes',
-                            'paymentMethod', 'recurringBillId', 'recurringDueDate', 'createdAt', 'updatedAt'])
-        && d.type in ['income', 'expense']
+                            'paymentMethod', 'accountId', 'toAccountId', 'origin', 'sourceRef', 'importId',
+                            'recurringBillId', 'recurringDueDate', 'incomeSourceId', 'incomeDueDate',
+                            'invoiceId', 'reconciled', 'createdAt', 'updatedAt'])
+        && d.type in ['income', 'expense', 'refund', 'transfer']
         && isName(d.description, 120)
         && isAmount(d.amountMinor)
         && isCurrency(d.currency)
         && isId(d.categoryId)
         && isDate(d.date)
         && isText(d.notes, 1000)
-        && (d.paymentMethod == null
-            || d.paymentMethod in ['cash', 'debit-card', 'credit-card', 'bank-transfer', 'mobile-wallet', 'other'])
+        && isPaymentMethod(d.paymentMethod)
+        && isOptId(d.accountId)
+        && isOptId(d.toAccountId)
+        && d.origin in ['manual', 'import', 'bill', 'income', 'invoice']
+        && (d.sourceRef == null || isText(d.sourceRef, 120))
+        && isOptId(d.invoiceId)
+        && d.reconciled is bool
+        // Transfers move money between two different own accounts and never count as income/expense.
+        && (d.type == 'transfer'
+            ? (isId(d.accountId) && isId(d.toAccountId) && d.accountId != d.toAccountId && d.categoryId == 'transfer')
+            : d.toAccountId == null)
+        // A bill payment's ID is derived from the bill and due date: each occurrence is recorded once.
         && ((d.recurringBillId == null && d.recurringDueDate == null)
-            // A bill payment's ID is derived from the bill and due date, so each occurrence
-            // can only ever be recorded once.
-            || (d.type == 'expense'
-                && isId(d.recurringBillId)
-                && isDate(d.recurringDueDate)
-                && id == 'bill_' + d.recurringBillId + '_' + d.recurringDueDate));
+            || (d.type == 'expense' && isId(d.recurringBillId) && isDate(d.recurringDueDate)
+                && id == 'bill_' + d.recurringBillId + '_' + d.recurringDueDate))
+        // Income receipts carry their source and expected date in the ID, so a receipt can't be recorded twice.
+        && ((d.incomeSourceId == null && d.incomeDueDate == null)
+            || (d.type == 'income' && isId(d.incomeSourceId) && isDate(d.incomeDueDate)
+                && id.matches('^inc_' + d.incomeSourceId + '_' + d.incomeDueDate + '_[0-9]{1,3}$')))
+        // Imported rows use deterministic IDs so re-importing a file can't duplicate them.
+        && ((d.importId == null) || (isId(d.importId) && id.matches('^imp_.+$')));
     }
 
     function validCategory(d) {
@@ -102,28 +144,160 @@ service cloud.firestore {
 
     function validBill(d) {
       return hasExactly(d, ['name', 'amountMinor', 'currency', 'categoryId', 'frequency', 'nextDueDate', 'anchorDay',
-                            'endDate', 'notes', 'status', 'lastPaidDate', 'createdAt', 'updatedAt'])
+                            'endDate', 'notes', 'status', 'lastPaidDate', 'accountId', 'createdAt', 'updatedAt'])
         && isName(d.name, 80)
         && isAmount(d.amountMinor)
         && isCurrency(d.currency)
         && isId(d.categoryId)
         && d.frequency in ['weekly', 'monthly', 'quarterly', 'yearly']
         && isDate(d.nextDueDate)
-        && d.anchorDay is int && d.anchorDay >= 1 && d.anchorDay <= 31
-        && (d.endDate == null || isDate(d.endDate))
+        && isDay(d.anchorDay)
+        && isOptDate(d.endDate)
         && isText(d.notes, 1000)
         && d.status in ['active', 'paused', 'ended']
-        && (d.lastPaidDate == null || isDate(d.lastPaidDate));
+        && isOptDate(d.lastPaidDate)
+        && isOptId(d.accountId);
+    }
+
+    function validAccount(d) {
+      return hasExactly(d, ['name', 'kind', 'provider', 'currency', 'openingBalanceMinor', 'last4', 'syncMode',
+                            'creditLimitMinor', 'statementDay', 'paymentDueDay', 'minimumPaymentMinor', 'archived',
+                            'notes', 'createdAt', 'updatedAt'])
+        && isName(d.name, 60)
+        && d.kind in ['cash', 'bank', 'debit-card', 'credit-card', 'paypal', 'instapay', 'mobile-wallet', 'other']
+        && isText(d.provider, 60)
+        && isCurrency(d.currency)
+        && isSigned(d.openingBalanceMinor)
+        // Only the last four digits may be stored — never a full card number.
+        && d.last4 is string && d.last4.matches('^([0-9]{4})?$')
+        && d.syncMode in ['manual', 'import']
+        && isOptAmount(d.creditLimitMinor)
+        && isOptDay(d.statementDay)
+        && isOptDay(d.paymentDueDay)
+        && isOptAmount(d.minimumPaymentMinor)
+        && d.archived is bool
+        && isText(d.notes, 1000);
+    }
+
+    function validIncomeSource(d) {
+      return hasExactly(d, ['name', 'categoryId', 'description', 'currency', 'expectedAmountMinor', 'frequency',
+                            'nextExpectedDate', 'anchorDay', 'endDate', 'accountId', 'status', 'notes',
+                            'createdAt', 'updatedAt'])
+        && isName(d.name, 80)
+        && isId(d.categoryId)
+        && isText(d.description, 200)
+        && isCurrency(d.currency)
+        && isAmount(d.expectedAmountMinor)
+        && d.frequency in ['once', 'weekly', 'monthly', 'quarterly', 'yearly']
+        && isDate(d.nextExpectedDate)
+        && isDay(d.anchorDay)
+        && isOptDate(d.endDate)
+        && isOptId(d.accountId)
+        && d.status in ['active', 'paused', 'completed', 'cancelled']
+        && isText(d.notes, 1000);
+    }
+
+    function validInvoiceFile(f) {
+      return f == null
+        || (f is map && hasExactly(f, ['name', 'type', 'size', 'sha256', 'storagePath'])
+            && isText(f.name, 200)
+            && f.type in ['image/jpeg', 'image/png', 'image/webp', 'application/pdf', 'application/json', 'application/xml']
+            && f.size is int && f.size > 0 && f.size <= 10485760
+            && f.sha256 is string && f.sha256.matches('^[0-9a-f]{64}$')
+            && isText(f.storagePath, 300));
+    }
+
+    function validInvoice(d) {
+      return hasExactly(d, ['kind', 'merchant', 'merchantAddress', 'merchantTaxId', 'invoiceNumber', 'issueDate', 'dueDate',
+                            'currency', 'subtotalMinor', 'discountMinor', 'taxMinor', 'totalMinor', 'taxLines', 'lines',
+                            'categoryId', 'status', 'paymentMethod', 'warrantyUntil', 'returnBy', 'qrText', 'extraction',
+                            'rawText', 'linkedTransactionIds', 'file', 'notes', 'createdAt', 'updatedAt'])
+        && d.kind in ['receipt', 'tax-invoice', 'utility-bill', 'e-invoice', 'e-receipt', 'other']
+        && isText(d.merchant, 120)
+        && isText(d.merchantAddress, 200)
+        && isText(d.merchantTaxId, 40)
+        && isText(d.invoiceNumber, 60)
+        && isOptDate(d.issueDate)
+        && isOptDate(d.dueDate)
+        && isCurrency(d.currency)
+        && isOptAmount(d.subtotalMinor)
+        && isOptAmount(d.discountMinor)
+        && isOptAmount(d.taxMinor)
+        && d.totalMinor is int && d.totalMinor >= 0 && d.totalMinor <= 1000000000000
+        && d.taxLines is list && d.taxLines.size() <= 20
+        && d.lines is list && d.lines.size() <= 200
+        && isOptId(d.categoryId)
+        && d.status in ['unpaid', 'paid', 'partially-paid', 'cancelled']
+        && isPaymentMethod(d.paymentMethod)
+        && isOptDate(d.warrantyUntil)
+        && isOptDate(d.returnBy)
+        && isText(d.qrText, 2000)
+        && d.extraction in ['manual', 'ocr', 'pdf-text', 'eta-json', 'ubl-xml', 'zatca-qr']
+        && isText(d.rawText, 20000)
+        && d.linkedTransactionIds is list && d.linkedTransactionIds.size() <= 50
+        && validInvoiceFile(d.file)
+        && isText(d.notes, 1000);
+    }
+
+    function validImport(d) {
+      return hasExactly(d, ['fileName', 'format', 'accountId', 'rowCount', 'importedCount', 'duplicateCount', 'skippedCount',
+                            'status', 'createdAt', 'updatedAt'])
+        && isText(d.fileName, 200)
+        && d.format in ['csv', 'pdf']
+        && isOptId(d.accountId)
+        && d.rowCount is int && d.importedCount is int && d.duplicateCount is int && d.skippedCount is int
+        && d.status in ['completed', 'rolled-back'];
+    }
+
+    function validGoal(d) {
+      return hasExactly(d, ['name', 'currency', 'targetMinor', 'targetDate', 'isEmergencyFund', 'contributions', 'notes',
+                            'createdAt', 'updatedAt'])
+        && isName(d.name, 60)
+        && isCurrency(d.currency)
+        && isAmount(d.targetMinor)
+        && isOptDate(d.targetDate)
+        && d.isEmergencyFund is bool
+        && d.contributions is list && d.contributions.size() <= 500
+        && isText(d.notes, 1000);
+    }
+
+    function validDebt(d) {
+      return hasExactly(d, ['name', 'kind', 'lender', 'currency', 'originalMinor', 'annualRate', 'minimumPaymentMinor',
+                            'dueDay', 'payments', 'notes', 'createdAt', 'updatedAt'])
+        && isName(d.name, 60)
+        && d.kind in ['loan', 'personal', 'installment', 'mortgage', 'other']
+        && isText(d.lender, 60)
+        && isCurrency(d.currency)
+        && isAmount(d.originalMinor)
+        && isText(d.annualRate, 8)
+        && isOptAmount(d.minimumPaymentMinor)
+        && isOptDay(d.dueDay)
+        && d.payments is list && d.payments.size() <= 500
+        && isText(d.notes, 1000);
     }
 
     function validSettings(d) {
-      return hasExactly(d, ['displayCurrency', 'locale', 'dateFormat', 'weekStartsOn', 'openingBalances',
+      return hasExactly(d, ['displayCurrency', 'locale', 'language', 'dateFormat', 'weekStartsOn', 'openingBalances',
                             'createdAt', 'updatedAt'])
         && isCurrency(d.displayCurrency)
         && isName(d.locale, 35)
+        && d.language in ['en', 'ar']
         && d.dateFormat in ['locale', 'yyyy-MM-dd', 'dd/MM/yyyy', 'MM/dd/yyyy', 'd MMM yyyy']
         && d.weekStartsOn in [0, 1, 6]
         && d.openingBalances is list && d.openingBalances.size() <= 50;
+    }
+
+    function validRecord(collectionName, d, id) {
+      return (collectionName == 'transactions' && validTransaction(d, id))
+        || (collectionName == 'categories' && validCategory(d))
+        || (collectionName == 'budgets' && validBudget(d))
+        || (collectionName == 'recurringBills' && validBill(d))
+        || (collectionName == 'accounts' && validAccount(d))
+        || (collectionName == 'incomeSources' && validIncomeSource(d))
+        || (collectionName == 'invoices' && validInvoice(d))
+        || (collectionName == 'imports' && validImport(d))
+        || (collectionName == 'goals' && validGoal(d))
+        || (collectionName == 'debts' && validDebt(d));
     }
 
     // ---- per-user data ------------------------------------------------------
@@ -138,29 +312,14 @@ service cloud.firestore {
         allow update: if isOwner(uid) && docId == 'preferences' && validSettings(request.resource.data) && updatedNow();
       }
 
-      match /transactions/{id} {
-        allow read, delete: if isOwner(uid);
-        allow create: if isOwner(uid) && isId(id) && validTransaction(request.resource.data, id) && createdNow();
-        allow update: if isOwner(uid) && validTransaction(request.resource.data, id) && updatedNow();
-      }
-
-      match /categories/{id} {
-        allow read, delete: if isOwner(uid);
-        allow create: if isOwner(uid) && isId(id) && validCategory(request.resource.data) && createdNow();
-        allow update: if isOwner(uid) && validCategory(request.resource.data) && updatedNow()
-          && request.resource.data.type == resource.data.type;
-      }
-
-      match /budgets/{id} {
-        allow read, delete: if isOwner(uid);
-        allow create: if isOwner(uid) && isId(id) && validBudget(request.resource.data) && createdNow();
-        allow update: if isOwner(uid) && validBudget(request.resource.data) && updatedNow();
-      }
-
-      match /recurringBills/{id} {
-        allow read, delete: if isOwner(uid);
-        allow create: if isOwner(uid) && isId(id) && validBill(request.resource.data) && createdNow();
-        allow update: if isOwner(uid) && validBill(request.resource.data) && updatedNow();
+      match /{collectionName}/{id} {
+        allow read, delete: if isOwner(uid)
+          && collectionName in ['transactions', 'categories', 'budgets', 'recurringBills', 'accounts',
+                                'incomeSources', 'invoices', 'imports', 'goals', 'debts'];
+        allow create: if isOwner(uid) && isId(id) && validRecord(collectionName, request.resource.data, id) && createdNow();
+        allow update: if isOwner(uid) && validRecord(collectionName, request.resource.data, id) && updatedNow()
+          // A category keeps its type once created.
+          && (collectionName != 'categories' || request.resource.data.type == resource.data.type);
       }
     }
   }

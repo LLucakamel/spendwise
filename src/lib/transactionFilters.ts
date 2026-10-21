@@ -1,15 +1,8 @@
-import { PAYMENT_METHODS, type PaymentMethod, type Transaction, type TransactionType } from '@/domain/types'
+import { PAYMENT_METHODS, TRANSACTION_TYPES, type PaymentMethod, type Transaction, type TransactionType } from '@/domain/types'
 import { parseSignedAmountToMinor } from './money'
 
 export const SORT_OPTIONS = ['date-desc', 'date-asc', 'amount-desc', 'amount-asc'] as const
 export type SortOption = (typeof SORT_OPTIONS)[number]
-
-export const SORT_LABELS: Record<SortOption, string> = {
-  'date-desc': 'Newest first',
-  'date-asc': 'Oldest first',
-  'amount-desc': 'Largest amount',
-  'amount-asc': 'Smallest amount',
-}
 
 export interface TransactionFilters {
   query: string
@@ -22,6 +15,9 @@ export interface TransactionFilters {
   minAmount: string
   maxAmount: string
   paymentMethod: PaymentMethod | 'none' | ''
+  accountId: string
+  origin: '' | 'manual' | 'import'
+  reconciled: '' | 'yes' | 'no'
   sort: SortOption
 }
 
@@ -35,6 +31,9 @@ export const EMPTY_FILTERS: TransactionFilters = {
   minAmount: '',
   maxAmount: '',
   paymentMethod: '',
+  accountId: '',
+  origin: '',
+  reconciled: '',
   sort: 'date-desc',
 }
 
@@ -48,7 +47,10 @@ export function hasActiveFilters(filters: TransactionFilters): boolean {
       filters.to ||
       filters.minAmount ||
       filters.maxAmount ||
-      filters.paymentMethod,
+      filters.paymentMethod ||
+      filters.accountId ||
+      filters.origin ||
+      filters.reconciled,
   )
 }
 
@@ -84,6 +86,11 @@ export function applyTransactionFilters(
     if (filters.currency && t.currency !== filters.currency) return false
     if (filters.from && t.date < filters.from) return false
     if (filters.to && t.date > filters.to) return false
+    if (filters.accountId && t.accountId !== filters.accountId && t.toAccountId !== filters.accountId) return false
+    if (filters.origin === 'import' && t.origin !== 'import') return false
+    if (filters.origin === 'manual' && t.origin === 'import') return false
+    if (filters.reconciled === 'yes' && !t.reconciled) return false
+    if (filters.reconciled === 'no' && t.reconciled) return false
     if (filters.paymentMethod === 'none' && t.paymentMethod !== null) return false
     if (filters.paymentMethod && filters.paymentMethod !== 'none' && t.paymentMethod !== filters.paymentMethod) return false
     if (filters.minAmount || filters.maxAmount) {
@@ -118,7 +125,7 @@ export function filtersFromParams(params: URLSearchParams): TransactionFilters {
   const method = params.get('method') ?? ''
   return {
     query: params.get('q') ?? '',
-    type: type === 'income' || type === 'expense' ? type : '',
+    type: (TRANSACTION_TYPES as readonly string[]).includes(type ?? '') ? (type as TransactionType) : '',
     categoryId: params.get('category') ?? '',
     currency: params.get('currency') ?? '',
     from: params.get('from') ?? '',
@@ -126,6 +133,9 @@ export function filtersFromParams(params: URLSearchParams): TransactionFilters {
     minAmount: params.get('min') ?? '',
     maxAmount: params.get('max') ?? '',
     paymentMethod: method === 'none' || (PAYMENT_METHODS as readonly string[]).includes(method) ? (method as TransactionFilters['paymentMethod']) : '',
+    accountId: params.get('account') ?? '',
+    origin: params.get('origin') === 'import' ? 'import' : params.get('origin') === 'manual' ? 'manual' : '',
+    reconciled: params.get('reconciled') === 'yes' ? 'yes' : params.get('reconciled') === 'no' ? 'no' : '',
     sort: SORT_OPTIONS.includes(sort as SortOption) ? (sort as SortOption) : 'date-desc',
   }
 }
@@ -141,6 +151,9 @@ export function filtersToParams(filters: TransactionFilters): URLSearchParams {
   if (filters.minAmount) params.set('min', filters.minAmount)
   if (filters.maxAmount) params.set('max', filters.maxAmount)
   if (filters.paymentMethod) params.set('method', filters.paymentMethod)
+  if (filters.accountId) params.set('account', filters.accountId)
+  if (filters.origin) params.set('origin', filters.origin)
+  if (filters.reconciled) params.set('reconciled', filters.reconciled)
   if (filters.sort !== 'date-desc') params.set('sort', filters.sort)
   return params
 }

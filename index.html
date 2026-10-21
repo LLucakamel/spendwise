@@ -10,9 +10,13 @@
     <link rel="apple-touch-icon" href="/icon-192.png" />
     <title>SpendWise</title>
     <script>
-      // Apply the saved theme before first paint to avoid a flash of the wrong theme.
+      // Apply the saved theme, language and text direction before first paint to avoid a flash.
       ;(function () {
         try {
+          var lang = localStorage.getItem('spendwise.lang')
+          if (lang !== 'ar' && lang !== 'en') lang = (navigator.language || '').toLowerCase().indexOf('ar') === 0 ? 'ar' : 'en'
+          document.documentElement.lang = lang
+          document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr'
           var pref = localStorage.getItem('spendwise.theme') || 'system'
           var dark = pref === 'dark' || (pref === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)
           if (dark) document.documentElement.classList.add('dark')
