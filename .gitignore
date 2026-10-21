@@ -1,0 +1,39 @@
+# dependencies
+node_modules/
+
+# build output
+dist/
+dist-*/
+*.tsbuildinfo
+node_modules/.tmp/
+
+# env files: only the example and the non-secret demo mode file are committed
+.env
+.env.*
+!.env.example
+!.env.demo
+
+# Firebase
+.firebase/
+.firebaserc
+*-debug.log
+firebase-debug.log*
+firestore-debug.log*
+ui-debug.log*
+serviceAccount*.json
+*-service-account*.json
+
+# test output
+coverage/
+playwright-report/
+test-results/
+blob-report/
+
+# editors / OS
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
+*.log
+*.local
