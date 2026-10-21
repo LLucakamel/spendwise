@@ -82,7 +82,7 @@ export function RecurringPage() {
             </p>
           </div>
         </div>
-        <div className="flex items-center justify-between gap-3 sm:justify-end">
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 sm:flex-nowrap sm:justify-end">
           <BillTimingBadge bill={bill} today={today} />
           <Money minor={bill.amountMinor} currency={bill.currency} className="w-28 text-right text-sm font-medium" />
           <div className="flex items-center gap-1">

@@ -2,6 +2,9 @@ import type { Category, Transaction } from '@/domain/types'
 import { PAYMENT_METHOD_LABELS } from '@/domain/types'
 import { minorToDecimalString } from './money'
 
+/** UTF-8 byte order mark, so spreadsheet apps detect the encoding. */
+const BOM = String.fromCharCode(0xfeff)
+
 const FORMULA_PREFIX = /^[=+\-@\t\r]/
 
 /**
@@ -57,7 +60,7 @@ export function transactionsToCsv(transactions: readonly Transaction[], categori
 
 /** Triggers a browser download. A UTF-8 BOM is added so spreadsheet apps detect the encoding. */
 export function downloadTextFile(filename: string, content: string, mime: string, withBom = false): void {
-  const blob = new Blob([withBom ? '﻿' : '', content], { type: `${mime};charset=utf-8` })
+  const blob = new Blob([withBom ? BOM : '', content], { type: `${mime};charset=utf-8` })
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
   link.href = url

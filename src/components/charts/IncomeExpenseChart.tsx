@@ -83,6 +83,7 @@ export function IncomeExpenseChart({
             align="right"
             height={28}
             iconType="square"
+            itemSorter={null}
             iconSize={10}
             formatter={(value: string) => <span className="text-xs text-muted-foreground">{value}</span>}
           />

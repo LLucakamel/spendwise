@@ -9,6 +9,13 @@ import { DemoRepository } from '@/data/demo/demoRepository'
 import { DEFAULT_CATEGORIES, defaultSettings } from '@/domain/defaults'
 import type { FinanceData } from '@/domain/types'
 import { ThemeProvider } from '@/hooks/use-theme'
+// Load the lazily-imported pages up front so tests don't race module loading.
+import '@/features/analytics/AnalyticsPage'
+import '@/features/budgets/BudgetsPage'
+import '@/features/dashboard/DashboardPage'
+import '@/features/recurring/RecurringPage'
+import '@/features/settings/SettingsPage'
+import '@/features/transactions/TransactionsPage'
 
 export function emptyData(overrides: Partial<FinanceData> = {}): FinanceData {
   return {

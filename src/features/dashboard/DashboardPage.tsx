@@ -59,15 +59,15 @@ function Delta({ current, previous, invert, available }: { current: number; prev
 
 function StatCard({ title, icon: Icon, value, footer }: { title: string; icon: typeof WalletIcon; value: ReactNode; footer: ReactNode }) {
   return (
-    <Card className="gap-2 py-5">
-      <CardHeader className="px-5">
-        <CardDescription className="flex items-center gap-2 text-sm">
+    <Card className="gap-2 py-4 sm:py-5">
+      <CardHeader className="px-4 sm:px-5">
+        <CardDescription className="flex items-center gap-2 text-xs sm:text-sm">
           <Icon className="size-4" aria-hidden="true" />
           {title}
         </CardDescription>
       </CardHeader>
-      <CardContent className="px-5">
-        <p className="text-2xl font-semibold tracking-tight">{value}</p>
+      <CardContent className="px-4 sm:px-5">
+        <p className="text-xl font-semibold tracking-tight sm:text-2xl">{value}</p>
         <div className="mt-1 min-h-4">{footer}</div>
       </CardContent>
     </Card>
@@ -169,7 +169,7 @@ export function DashboardPage() {
         <CurrencySwitcher currencies={currencies} value={currency} onChange={setChosenCurrency} label="Currency shown" />
       </div>
 
-      <section aria-label={`Summary in ${currency}`} className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <section aria-label={`Summary in ${currency}`} className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
         <StatCard
           title={`Income · ${currency}`}
           icon={ArrowUpRightIcon}

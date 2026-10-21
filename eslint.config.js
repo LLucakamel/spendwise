@@ -5,7 +5,7 @@ import globals from 'globals'
 import tseslint from 'typescript-eslint'
 
 export default tseslint.config(
-  { ignores: ['dist', 'coverage', 'playwright-report', 'test-results'] },
+  { ignores: ['dist', 'dist-*', 'coverage', 'playwright-report', 'test-results'] },
   {
     files: ['**/*.{ts,tsx}'],
     extends: [js.configs.recommended, ...tseslint.configs.recommended, reactHooks.configs.flat.recommended],
@@ -21,8 +21,16 @@ export default tseslint.config(
     },
   },
   {
-    // shadcn/ui primitives export variant helpers next to components by design.
-    files: ['src/components/ui/**/*.tsx'],
+    // Files that intentionally export helpers next to components: shadcn/ui primitives
+    // (variant helpers), context providers with their hooks, the route table and the entry point.
+    files: [
+      'src/components/ui/**/*.tsx',
+      'src/app/AppRoutes.tsx',
+      'src/main.tsx',
+      'src/data/DataProvider.tsx',
+      'src/hooks/use-theme.tsx',
+      'src/features/budgets/budgetUi.tsx',
+    ],
     rules: { 'react-refresh/only-export-components': 'off' },
   },
 )

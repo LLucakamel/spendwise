@@ -26,7 +26,7 @@ interface NavItem {
   icon: LucideIcon
 }
 
-export const NAV_ITEMS: NavItem[] = [
+const NAV_ITEMS: NavItem[] = [
   { to: '/', label: 'Dashboard', short: 'Home', icon: LayoutDashboardIcon },
   { to: '/transactions', label: 'Transactions', short: 'Activity', icon: ArrowLeftRightIcon },
   { to: '/budgets', label: 'Budgets', short: 'Budgets', icon: PiggyBankIcon },

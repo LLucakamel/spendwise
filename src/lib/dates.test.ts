@@ -53,7 +53,8 @@ describe('comparisonRange', () => {
 
 describe('buckets', () => {
   it('chooses granularity by range length', () => {
-    expect(chooseGranularity({ from: '2026-03-01', to: '2026-03-31' })).toBe('day')
+    expect(chooseGranularity({ from: '2026-03-01', to: '2026-03-14' })).toBe('day')
+    expect(chooseGranularity({ from: '2026-03-01', to: '2026-03-31' })).toBe('week')
     expect(chooseGranularity({ from: '2026-01-01', to: '2026-03-31' })).toBe('week')
     expect(chooseGranularity({ from: '2026-01-01', to: '2026-12-31' })).toBe('month')
   })

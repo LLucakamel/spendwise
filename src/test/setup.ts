@@ -3,7 +3,7 @@ import { cleanup, configure } from '@testing-library/react'
 import { afterEach } from 'vitest'
 
 // Pages are lazy-loaded, so the first render of each page can take longer than the 1s default.
-configure({ asyncUtilTimeout: 5000 })
+configure({ asyncUtilTimeout: 10000 })
 
 afterEach(() => {
   cleanup()

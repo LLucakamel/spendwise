@@ -1,0 +1,167 @@
+rules_version = '2';
+
+// SpendWise Firestore Security Rules
+//
+// Every record lives under users/{uid}/... and is readable and writable only by the
+// signed-in user whose UID matches {uid}. Anything not matched below is denied.
+// Writes are validated so a modified client cannot store malformed financial data,
+// forge timestamps or create duplicate bill payments.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---- helpers ------------------------------------------------------------
+
+    function isOwner(uid) {
+      return request.auth != null && request.auth.uid == uid;
+    }
+
+    function isId(v) {
+      return v is string && v.matches('^[A-Za-z0-9_-]{1,128}$');
+    }
+
+    function isDate(v) {
+      return v is string && v.matches('^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$');
+    }
+
+    function isMonth(v) {
+      return v is string && v.matches('^[0-9]{4}-(0[1-9]|1[0-2])$');
+    }
+
+    function isCurrency(v) {
+      return v is string && v.matches('^[A-Z]{3}$');
+    }
+
+    // Positive integer minor units (e.g. cents), matching MAX_AMOUNT_MINOR in the app.
+    function isAmount(v) {
+      return v is int && v > 0 && v <= 1000000000000;
+    }
+
+    function isName(v, max) {
+      return v is string && v.size() >= 1 && v.size() <= max;
+    }
+
+    function isText(v, max) {
+      return v is string && v.size() <= max;
+    }
+
+    function createdNow() {
+      return request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time;
+    }
+
+    function updatedNow() {
+      return request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.updatedAt == request.time;
+    }
+
+    function hasExactly(d, fields) {
+      return d.keys().hasAll(fields) && d.keys().hasOnly(fields);
+    }
+
+    // ---- record validators --------------------------------------------------
+
+    function validTransaction(d, id) {
+      return hasExactly(d, ['type', 'description', 'amountMinor', 'currency', 'categoryId', 'date', 'notes',
+                            'paymentMethod', 'recurringBillId', 'recurringDueDate', 'createdAt', 'updatedAt'])
+        && d.type in ['income', 'expense']
+        && isName(d.description, 120)
+        && isAmount(d.amountMinor)
+        && isCurrency(d.currency)
+        && isId(d.categoryId)
+        && isDate(d.date)
+        && isText(d.notes, 1000)
+        && (d.paymentMethod == null
+            || d.paymentMethod in ['cash', 'debit-card', 'credit-card', 'bank-transfer', 'mobile-wallet', 'other'])
+        && ((d.recurringBillId == null && d.recurringDueDate == null)
+            // A bill payment's ID is derived from the bill and due date, so each occurrence
+            // can only ever be recorded once.
+            || (d.type == 'expense'
+                && isId(d.recurringBillId)
+                && isDate(d.recurringDueDate)
+                && id == 'bill_' + d.recurringBillId + '_' + d.recurringDueDate));
+    }
+
+    function validCategory(d) {
+      return hasExactly(d, ['name', 'type', 'color', 'createdAt', 'updatedAt'])
+        && isName(d.name, 40)
+        && d.type in ['income', 'expense']
+        && d.color is string && d.color.matches('^#[0-9a-fA-F]{6}$');
+    }
+
+    function validBudget(d) {
+      return hasExactly(d, ['name', 'categoryId', 'limitMinor', 'currency', 'startMonth', 'endMonth', 'notes',
+                            'createdAt', 'updatedAt'])
+        && isName(d.name, 80)
+        && isId(d.categoryId)
+        && isAmount(d.limitMinor)
+        && isCurrency(d.currency)
+        && isMonth(d.startMonth)
+        && (d.endMonth == null || (isMonth(d.endMonth) && d.endMonth >= d.startMonth))
+        && isText(d.notes, 1000);
+    }
+
+    function validBill(d) {
+      return hasExactly(d, ['name', 'amountMinor', 'currency', 'categoryId', 'frequency', 'nextDueDate', 'anchorDay',
+                            'endDate', 'notes', 'status', 'lastPaidDate', 'createdAt', 'updatedAt'])
+        && isName(d.name, 80)
+        && isAmount(d.amountMinor)
+        && isCurrency(d.currency)
+        && isId(d.categoryId)
+        && d.frequency in ['weekly', 'monthly', 'quarterly', 'yearly']
+        && isDate(d.nextDueDate)
+        && d.anchorDay is int && d.anchorDay >= 1 && d.anchorDay <= 31
+        && (d.endDate == null || isDate(d.endDate))
+        && isText(d.notes, 1000)
+        && d.status in ['active', 'paused', 'ended']
+        && (d.lastPaidDate == null || isDate(d.lastPaidDate));
+    }
+
+    function validSettings(d) {
+      return hasExactly(d, ['displayCurrency', 'locale', 'dateFormat', 'weekStartsOn', 'openingBalances',
+                            'createdAt', 'updatedAt'])
+        && isCurrency(d.displayCurrency)
+        && isName(d.locale, 35)
+        && d.dateFormat in ['locale', 'yyyy-MM-dd', 'dd/MM/yyyy', 'MM/dd/yyyy', 'd MMM yyyy']
+        && d.weekStartsOn in [0, 1, 6]
+        && d.openingBalances is list && d.openingBalances.size() <= 50;
+    }
+
+    // ---- per-user data ------------------------------------------------------
+
+    match /users/{uid} {
+      // The parent document is not used; everything lives in subcollections.
+      allow read, write: if false;
+
+      match /settings/{docId} {
+        allow read, delete: if isOwner(uid) && docId == 'preferences';
+        allow create: if isOwner(uid) && docId == 'preferences' && validSettings(request.resource.data) && createdNow();
+        allow update: if isOwner(uid) && docId == 'preferences' && validSettings(request.resource.data) && updatedNow();
+      }
+
+      match /transactions/{id} {
+        allow read, delete: if isOwner(uid);
+        allow create: if isOwner(uid) && isId(id) && validTransaction(request.resource.data, id) && createdNow();
+        allow update: if isOwner(uid) && validTransaction(request.resource.data, id) && updatedNow();
+      }
+
+      match /categories/{id} {
+        allow read, delete: if isOwner(uid);
+        allow create: if isOwner(uid) && isId(id) && validCategory(request.resource.data) && createdNow();
+        allow update: if isOwner(uid) && validCategory(request.resource.data) && updatedNow()
+          && request.resource.data.type == resource.data.type;
+      }
+
+      match /budgets/{id} {
+        allow read, delete: if isOwner(uid);
+        allow create: if isOwner(uid) && isId(id) && validBudget(request.resource.data) && createdNow();
+        allow update: if isOwner(uid) && validBudget(request.resource.data) && updatedNow();
+      }
+
+      match /recurringBills/{id} {
+        allow read, delete: if isOwner(uid);
+        allow create: if isOwner(uid) && isId(id) && validBill(request.resource.data) && createdNow();
+        allow update: if isOwner(uid) && validBill(request.resource.data) && updatedNow();
+      }
+    }
+  }
+}

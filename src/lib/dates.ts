@@ -141,7 +141,7 @@ export type Granularity = 'day' | 'week' | 'month'
 
 export function chooseGranularity(range: DateRange): Granularity {
   const days = rangeLengthDays(range)
-  if (days <= 31) return 'day'
+  if (days <= 14) return 'day'
   if (days <= 120) return 'week'
   return 'month'
 }
