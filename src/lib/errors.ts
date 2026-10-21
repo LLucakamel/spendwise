@@ -6,6 +6,8 @@ const KEYS: Record<string, MessageKey> = {
   'auth/wrong-password': 'errors.invalidCredential',
   'auth/user-not-found': 'errors.invalidCredential',
   'auth/invalid-email': 'errors.invalidEmail',
+  'auth/expired-action-code': 'errors.actionExpired',
+  'auth/invalid-action-code': 'errors.actionInvalid',
   'auth/email-already-in-use': 'errors.emailInUse',
   'auth/weak-password': 'errors.weakPassword',
   'auth/password-does-not-meet-requirements': 'errors.weakPassword',

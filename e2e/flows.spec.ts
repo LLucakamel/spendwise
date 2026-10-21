@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { amountOf, go, gotoApp, statCard, today } from './helpers'
+import { addTransaction, amountOf, go, gotoApp, statCard, today } from './helpers'
 
 /** dd/mm/yyyy for today (the import dialog's default "Day/month/year" order). */
 function todayDmy() {
@@ -242,5 +242,201 @@ test.describe('invoices', () => {
     await expect(dialog.getByRole('alert')).toContainText('This file isn’t a recognised ETA or UBL invoice.')
     await dialog.getByRole('button', { name: 'Enter details by hand' }).click()
     await expect(dialog.getByLabel('Total', { exact: true })).toHaveValue('')
+  })
+})
+
+/** Opens Transactions, searches and returns the "x of y" counter. */
+async function searchTransactions(page: Page, query: string) {
+  await go(page, '/transactions')
+  await expect(page.getByRole('heading', { level: 1, name: 'Transactions' })).toBeVisible()
+  await page.getByLabel('Search transactions').fill(query)
+  return page.getByTestId('tx-count')
+}
+
+test.describe('journeys', () => {
+  test('a new monthly income source is received in full exactly once', async ({ page }) => {
+    const name = 'E2E Consulting retainer'
+    await gotoApp(page, '/income')
+    const received = page.getByTestId('income-received')
+    const expected = page.getByTestId('income-expected')
+    await expect(page.getByText('Received · EGP')).toBeVisible()
+    const received0 = await amountOf(received)
+    const expected0 = await amountOf(expected)
+
+    await page.getByRole('main').getByRole('button', { name: 'New income source' }).first().click()
+    const form = page.getByRole('dialog')
+    await expect(form).toContainText('New income source')
+    await form.getByLabel('Name', { exact: true }).fill(name)
+    await form.getByLabel('Expected amount').fill('3210.50')
+    await form.getByLabel('Currency').selectOption('EGP')
+    await form.getByLabel('Category').selectOption({ label: 'Freelance' })
+    await form.getByLabel('Frequency').selectOption('monthly')
+    await form.getByLabel('Next expected date').fill(today())
+    await form.getByRole('button', { name: 'Add', exact: true }).click()
+    await expect(form).toBeHidden()
+
+    const source = page.locator('li[id^="source-"]').filter({ hasText: name })
+    await expect(source).toContainText(/EGP\s0\.00 of EGP\s3,210\.50 received/)
+    await expect(source).toContainText('Monthly · Freelance')
+    // Only a forecast: expected rises, received doesn't.
+    await expect.poll(() => amountOf(expected)).toBe(expected0 + 321050)
+    expect(await amountOf(received)).toBe(received0)
+    const dueLine = source.getByText(/^Expected .*\d/)
+    const dueBefore = ((await dueLine.textContent()) ?? '').replace(/^Expected /, '')
+    expect(dueBefore).not.toBe('')
+    const upcoming = page.locator('[data-slot="card"]').filter({ hasText: 'Expected payments' })
+    await expect(upcoming.getByRole('listitem').filter({ hasText: name }).filter({ hasText: dueBefore })).toHaveCount(1)
+
+    await source.getByRole('button', { name: 'Mark received' }).click()
+    const dialog = page.getByRole('dialog')
+    await expect(dialog).toContainText(`Record income from “${name}”`)
+    await expect(dialog).toContainText(`For the payment expected on ${dueBefore}.`)
+    await expect(dialog.getByLabel('Amount received (EGP)')).toHaveValue('3210.50')
+    await expect(dialog).toContainText('Mark this payment as fully received and move the source to')
+    // A double click must still record one receipt only.
+    await dialog.getByRole('button', { name: 'Record income' }).dblclick()
+    await expect(dialog).toBeHidden()
+
+    await expect.poll(() => amountOf(received)).toBe(received0 + 321050)
+    await expect.poll(() => amountOf(expected)).toBe(expected0)
+    // The paid occurrence is no longer expected; the source moved on to its next date.
+    await expect(upcoming.getByRole('listitem').filter({ hasText: name }).filter({ hasText: dueBefore })).toHaveCount(0)
+    await expect(source).toContainText(/EGP\s0\.00 of EGP\s3,210\.50 received/)
+    await expect(dueLine).not.toHaveText(`Expected ${dueBefore}`)
+    const receivedCard = page.locator('[data-slot="card"]').filter({ hasText: 'Received income' })
+    await expect(receivedCard.getByRole('row').filter({ hasText: name })).toHaveCount(1)
+    await expect(receivedCard.getByRole('row').filter({ hasText: name })).toContainText('3,210.50')
+
+    // Recording again targets the next payment, never the one already received.
+    await source.getByRole('button', { name: 'Mark received' }).click()
+    await expect(dialog).toBeVisible()
+    await expect(dialog).toContainText('For the payment expected on')
+    await expect(dialog).not.toContainText(`For the payment expected on ${dueBefore}.`)
+    await dialog.getByRole('button', { name: 'Cancel' }).click()
+    await expect(dialog).toBeHidden()
+
+    await expect(await searchTransactions(page, name)).toHaveText(/^1 of/)
+  })
+
+  test('links an invoice payment only when the user confirms, and unlinks it again', async ({ page }) => {
+    const merchant = 'North Delta Electricity (demo)'
+    const payment = 'E2E North Delta electricity payment'
+    // An expense with the invoice's exact amount near its date: a match candidate, never an automatic link.
+    await gotoApp(page, '/transactions')
+    await addTransaction(page, { description: payment, amount: '1180', date: today() })
+
+    await go(page, '/invoices')
+    await expect(page.getByRole('heading', { level: 1, name: 'Invoices' })).toBeVisible()
+    const row = page.getByRole('main').getByRole('row').filter({ hasText: merchant })
+    await expect(row).toContainText('Unpaid')
+    await row.getByRole('button', { name: merchant }).click()
+    const sheet = page.getByRole('dialog').filter({ hasText: 'EL-2026-0918' })
+    await expect(sheet).toContainText(/EGP\s0\.00 of EGP\s1,180\.00 paid/)
+    await expect(sheet.getByRole('button', { name: 'Unlink' })).toHaveCount(0)
+    const suggestion = sheet.getByRole('listitem').filter({ hasText: payment })
+    await expect(suggestion.getByRole('button', { name: 'Link a payment' })).toBeVisible()
+
+    await suggestion.getByRole('button', { name: 'Link a payment' }).click()
+    await expect(sheet).toContainText('Paid (payment linked)')
+    await expect(sheet).toContainText(/EGP\s1,180\.00 of EGP\s1,180\.00 paid/)
+    const linked = sheet.getByRole('listitem').filter({ hasText: payment }).filter({ has: page.getByRole('button', { name: 'Unlink' }) })
+    await expect(linked).toContainText('1,180.00')
+
+    await linked.getByRole('button', { name: 'Unlink' }).click()
+    await expect(sheet).toContainText(/EGP\s0\.00 of EGP\s1,180\.00 paid/)
+    await expect(sheet.getByRole('button', { name: 'Unlink' })).toHaveCount(0)
+    await expect(sheet.getByText('Unpaid', { exact: true })).toBeVisible()
+
+    // Record a part payment as a new expense from the sheet.
+    await sheet.getByRole('button', { name: 'Record payment as expense' }).click()
+    const form = page.getByRole('dialog').filter({ hasText: 'New transaction' })
+    await expect(form.getByLabel('Description')).toHaveValue(merchant)
+    await expect(form.getByLabel('Amount', { exact: true })).toHaveValue('1180.00')
+    await form.getByLabel('Amount', { exact: true }).fill('500')
+    await form.getByRole('button', { name: 'Add transaction' }).click()
+    await expect(form).toBeHidden()
+    await expect(sheet).toContainText('Partly paid')
+    await expect(sheet).toContainText(/EGP\s500\.00 of EGP\s1,180\.00 paid/)
+    const partLinked = sheet.getByRole('listitem').filter({ hasText: merchant }).filter({ has: page.getByRole('button', { name: 'Unlink' }) })
+    await expect(partLinked).toContainText('500.00')
+
+    await partLinked.getByRole('button', { name: 'Unlink' }).click()
+    await expect(sheet.getByText('Unpaid', { exact: true })).toBeVisible()
+    await expect(sheet).toContainText(/EGP\s0\.00 of EGP\s1,180\.00 paid/)
+    await page.keyboard.press('Escape')
+    await expect(sheet).toBeHidden()
+    await expect(row).toContainText('Unpaid')
+  })
+
+  test('statement import flags a duplicate of an existing transaction and skips already imported rows', async ({ page }) => {
+    await gotoApp(page, '/transactions')
+    await addTransaction(page, { description: 'E2E Existing bakery purchase', amount: '432.10', date: today(), accountId: 'demo-acc-bank' })
+
+    const csv = ['Date,Description,Amount,Reference', `${todayDmy()},E2E Bank bakery line,-432.10,DUP-1`, `${todayDmy()},E2E Fresh import line,-77.25,NEW-1`].join('\n')
+    const file = { name: 'e2e-dupes.csv', mimeType: 'text/csv', buffer: Buffer.from(csv) }
+    await go(page, '/accounts')
+    await page.getByRole('button', { name: 'Import statement' }).first().click()
+    const dialog = page.getByRole('dialog')
+    await dialog.locator('input[type="file"]').setInputFiles(file)
+    await expect(dialog.getByLabel('Import into account')).toHaveValue('demo-acc-bank')
+    await expect(dialog.getByText('1 ready · 1 duplicates · 0 with errors')).toBeVisible()
+    const dupRow = dialog.getByRole('row').filter({ hasText: 'E2E Bank bakery line' })
+    await expect(dupRow).toContainText('Possible duplicate — check before including')
+    await expect(dupRow.getByRole('checkbox')).not.toBeChecked()
+    await expect(dialog.getByRole('row').filter({ hasText: 'E2E Fresh import line' }).getByRole('checkbox')).toBeChecked()
+    await dialog.getByRole('button', { name: 'Import 1 transaction', exact: true }).click()
+    await expect(dialog).toBeHidden()
+    await expect(page.getByText('Imported 1; 0 were already present.')).toBeVisible()
+
+    await expect(await searchTransactions(page, 'E2E Fresh import line')).toHaveText(/^1 of/)
+    await page.getByLabel('Search transactions').fill('E2E Bank bakery line')
+    await expect(page.getByText('No matching transactions')).toBeVisible()
+    await page.getByLabel('Search transactions').fill('E2E Existing bakery purchase')
+    await expect(page.getByTestId('tx-count')).toHaveText(/^1 of/)
+
+    // The same file again: nothing new to import.
+    await go(page, '/accounts')
+    await page.getByRole('button', { name: 'Import statement' }).first().click()
+    await dialog.locator('input[type="file"]').setInputFiles(file)
+    await expect(dialog.getByText('0 ready · 2 duplicates · 0 with errors')).toBeVisible()
+    const again = dialog.getByRole('row').filter({ hasText: 'E2E Fresh import line' })
+    await expect(again).toContainText('Already imported')
+    await expect(again.getByRole('checkbox')).toBeDisabled()
+    await expect(again.getByRole('checkbox')).not.toBeChecked()
+    await expect(dialog.getByRole('row').filter({ hasText: 'E2E Bank bakery line' }).getByRole('checkbox')).not.toBeChecked()
+    await expect(dialog.getByRole('button', { name: 'Import 0 transactions' })).toBeDisabled()
+    await dialog.getByRole('button', { name: 'Cancel' }).click()
+    await expect(dialog).toBeHidden()
+    await expect(await searchTransactions(page, 'E2E Fresh import line')).toHaveText(/^1 of/)
+  })
+
+  test('marks a transaction reconciled and filters by reconciliation status', async ({ page }) => {
+    const name = 'E2E Reconcile me'
+    await gotoApp(page, '/transactions')
+    await addTransaction(page, { description: name, amount: '55.55', date: today() })
+    await page.getByLabel('Search transactions').fill(name)
+    await expect(page.getByTestId('tx-count')).toHaveText(/^1 of/)
+    const row = page.locator('tbody tr').filter({ hasText: name })
+    await expect(row.getByLabel('Reconciled')).toHaveCount(0)
+
+    await row.getByRole('button', { name: `Actions for ${name}` }).click()
+    await page.getByRole('menuitem', { name: 'Mark reconciled' }).click()
+    await expect(row.getByLabel('Reconciled')).toBeVisible()
+
+    await page.getByRole('button', { name: 'More filters' }).click()
+    const status = page.getByLabel('Reconciliation')
+    await status.selectOption('yes')
+    await expect(page.getByTestId('tx-count')).toHaveText(/^1 of/)
+    await expect(row).toBeVisible()
+    await status.selectOption('no')
+    await expect(page.getByText('No matching transactions')).toBeVisible()
+    await expect(row).toHaveCount(0)
+
+    // Without the search, the unreconciled filter still excludes it and the reconciled one lists it.
+    await page.getByLabel('Search transactions').fill('')
+    await expect(page.getByTestId('tx-count')).not.toHaveText(/^0 of/)
+    await expect(row).toHaveCount(0)
+    await status.selectOption('yes')
+    await expect(row).toBeVisible()
   })
 })

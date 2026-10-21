@@ -9,7 +9,7 @@ import { DataProvider } from '@/data/DataProvider'
 import { getFirebaseServices, readFirebaseConfig } from '@/data/firebase/app'
 import { deleteAccount, resendVerification, signOut } from '@/data/firebase/authService'
 import { FirestoreRepository } from '@/data/firebase/firestoreRepository'
-import { ForgotPasswordPage, LoginPage, RegisterPage } from '@/features/auth/AuthPages'
+import { AuthActionPage, ForgotPasswordPage, LoginPage, RegisterPage } from '@/features/auth/AuthPages'
 import { useI18n } from '@/i18n'
 import { appRoutes } from './AppRoutes'
 import { APP_BASE } from './mode'
@@ -158,6 +158,7 @@ export default function FirebaseArea() {
           <Route path="register" element={<RegisterPage />} />
           <Route path="forgot-password" element={<ForgotPasswordPage />} />
         </Route>
+        <Route path="auth/action" element={<AuthActionPage />} />
         <Route path="app" element={<RequireAuth />}>
           {appRoutes()}
         </Route>

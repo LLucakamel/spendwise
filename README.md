@@ -28,6 +28,7 @@ All screenshots come from the app's production build. The dashboards show fictio
   - Amount fields accept Arabic-Indic digits (٠–٩).
 - **Accounts (sign-in)**
   - Sign up with a show/hide password toggle and live password rules, sign in with "keep me signed in", reset a password, and verify an email.
+  - Password-reset and email-verification links can open inside SpendWise (`#/auth/action`), where the link is checked and the new password must meet the same rules.
   - Edit your name, sign out, or delete your account together with all of its data.
   - Protected `#/app` routes return you to the requested page after sign-in.
 - **Demo mode**
@@ -143,7 +144,8 @@ To use real accounts locally, copy `.env.example` to `.env.local`, fill in your 
 3. **Authentication → Settings → Authorized domains:** add your Pages host, e.g. `USERNAME.github.io`.
 4. **Firestore Database → Create database** in production mode.
 5. Optional, invoice files in the cloud: upgrade to **Blaze** (Cloud Storage requires it for projects created since February 2026), then create the default bucket and set `VITE_FIREBASE_CLOUD_FILES=true`.
-6. Deploy the rules:
+6. Optional: under **Authentication → Templates**, edit a template and **customise the action URL** to `https://USERNAME.github.io/REPOSITORY/`. Reset and verification links then open in SpendWise. Without this, Firebase's own hosted page handles them, which also works.
+7. Deploy the rules:
 
    ```bash
    npx firebase login

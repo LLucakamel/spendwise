@@ -8,13 +8,16 @@ const authService = vi.hoisted(() => ({
   signIn: vi.fn(),
   register: vi.fn(),
   requestPasswordReset: vi.fn(),
+  verifyResetCode: vi.fn(),
+  completePasswordReset: vi.fn(),
+  verifyEmailCode: vi.fn(),
 }))
 vi.mock('@/data/firebase/authService', () => authService)
 vi.mock('@/data/firebase/app', () => ({
   getFirebaseServices: () => ({ auth: { name: 'test-auth' } }),
 }))
 
-const { ForgotPasswordPage, LoginPage, RegisterPage } = await import('./AuthPages')
+const { AuthActionPage, ForgotPasswordPage, LoginPage, RegisterPage } = await import('./AuthPages')
 
 function renderAt(path: string) {
   const user = userEvent.setup()
@@ -25,6 +28,7 @@ function renderAt(path: string) {
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+          <Route path="/auth/action" element={<AuthActionPage />} />
           <Route path="/app" element={<p>Private dashboard</p>} />
         </Routes>
       </MemoryRouter>
@@ -128,5 +132,46 @@ describe('ForgotPasswordPage', () => {
     await user.type(screen.getByLabelText('Email'), 'nobody@example.test')
     await user.click(screen.getByRole('button', { name: 'Send reset link' }))
     expect(await screen.findByRole('status')).toHaveTextContent('If an account exists for nobody@example.test')
+  })
+})
+
+describe('AuthActionPage', () => {
+  it('checks a reset link, then saves a new password that meets the rules', async () => {
+    authService.verifyResetCode.mockResolvedValue('person@example.com')
+    authService.completePasswordReset.mockResolvedValue(undefined)
+    const user = renderAt('/auth/action?mode=resetPassword&oobCode=code-1')
+    expect(await screen.findByText('For person@example.com.')).toBeInTheDocument()
+    await user.type(screen.getByLabelText('New password'), 'short')
+    await user.type(screen.getByLabelText('Confirm password'), 'short')
+    await user.click(screen.getByRole('button', { name: 'Save new password' }))
+    expect(authService.completePasswordReset).not.toHaveBeenCalled()
+    await user.clear(screen.getByLabelText('New password'))
+    await user.clear(screen.getByLabelText('Confirm password'))
+    await user.type(screen.getByLabelText('New password'), 'better-pass-9')
+    await user.type(screen.getByLabelText('Confirm password'), 'better-pass-9')
+    await user.click(screen.getByRole('button', { name: 'Save new password' }))
+    expect(await screen.findByText('Your password was changed. You can sign in with it now.')).toBeInTheDocument()
+    expect(authService.completePasswordReset).toHaveBeenCalledWith(expect.anything(), 'code-1', 'better-pass-9')
+  })
+
+  it('explains an expired link instead of showing the form', async () => {
+    authService.verifyResetCode.mockRejectedValue(firebaseError('auth/expired-action-code'))
+    renderAt('/auth/action?mode=resetPassword&oobCode=old')
+    expect(await screen.findByText('This link has expired. Request a new one.')).toBeInTheDocument()
+    expect(screen.queryByLabelText('New password')).not.toBeInTheDocument()
+  })
+
+  it('verifies an email address', async () => {
+    authService.verifyEmailCode.mockResolvedValue(undefined)
+    renderAt('/auth/action?mode=verifyEmail&oobCode=v1')
+    expect(await screen.findByText('Thanks — your email address is verified.')).toBeInTheDocument()
+    expect(authService.verifyEmailCode).toHaveBeenCalledWith(expect.anything(), 'v1')
+  })
+
+  it('rejects links that are not account links without calling Firebase', async () => {
+    renderAt('/auth/action?mode=signIn')
+    expect(await screen.findByText('This link isn’t a SpendWise account link.')).toBeInTheDocument()
+    expect(authService.verifyResetCode).not.toHaveBeenCalled()
+    expect(authService.verifyEmailCode).not.toHaveBeenCalled()
   })
 })

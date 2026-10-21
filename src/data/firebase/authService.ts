@@ -1,5 +1,7 @@
 import {
+  applyActionCode,
   browserLocalPersistence,
+  confirmPasswordReset,
   browserSessionPersistence,
   createUserWithEmailAndPassword,
   deleteUser,
@@ -11,6 +13,7 @@ import {
   signInWithEmailAndPassword,
   signOut as firebaseSignOut,
   updateProfile,
+  verifyPasswordResetCode,
   type Auth,
   type User,
 } from 'firebase/auth'
@@ -41,6 +44,22 @@ export async function register(auth: Auth, name: string, email: string, password
 
 export function requestPasswordReset(auth: Auth, email: string) {
   return sendPasswordResetEmail(auth, email.trim())
+}
+
+/** Checks a password-reset link and returns the account's email address. */
+export function verifyResetCode(auth: Auth, code: string) {
+  return verifyPasswordResetCode(auth, code)
+}
+
+export function completePasswordReset(auth: Auth, code: string, newPassword: string) {
+  return confirmPasswordReset(auth, code, newPassword)
+}
+
+/** Applies an email-verification link; a signed-in user is refreshed so the new state shows at once. */
+export async function verifyEmailCode(auth: Auth, code: string) {
+  await applyActionCode(auth, code)
+  await auth.currentUser?.reload().catch(() => undefined)
+  await auth.currentUser?.getIdToken(true).catch(() => undefined)
 }
 
 export function signOut(auth: Auth) {

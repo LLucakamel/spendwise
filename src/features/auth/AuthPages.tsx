@@ -1,8 +1,8 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { CheckCircle2Icon, CircleIcon, FlaskConicalIcon, Loader2Icon, MailIcon } from 'lucide-react'
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { useForm, useWatch } from 'react-hook-form'
-import { Link, useLocation, useNavigate } from 'react-router'
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router'
 import { APP_BASE } from '@/app/mode'
 import { FormField } from '@/components/common/FormField'
 import { PasswordInput } from '@/components/common/PasswordInput'
@@ -12,11 +12,11 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { getFirebaseServices } from '@/data/firebase/app'
-import { register as registerUser, requestPasswordReset, signIn } from '@/data/firebase/authService'
+import { completePasswordReset, register as registerUser, requestPasswordReset, signIn, verifyEmailCode, verifyResetCode } from '@/data/firebase/authService'
 import { useI18n, type MessageKey } from '@/i18n'
 import { errorCode, errorKey } from '@/lib/errors'
 import { cn } from '@/lib/utils'
-import { loginSchema, PASSWORD_RULES, registerSchema, resetSchema, type LoginValues, type RegisterValues, type ResetValues } from './authSchemas'
+import { loginSchema, newPasswordSchema, PASSWORD_RULES, registerSchema, resetSchema, type LoginValues, type NewPasswordValues, type RegisterValues, type ResetValues } from './authSchemas'
 
 function AuthShell({ title, description, children, footer }: { title: string; description: string; children: ReactNode; footer: ReactNode }) {
   const { t } = useI18n()
@@ -254,6 +254,102 @@ export function ForgotPasswordPage() {
           </FormField>
           <SubmitButton pending={formState.isSubmitting}>{t('auth.sendReset')}</SubmitButton>
         </form>
+      )}
+    </AuthShell>
+  )
+}
+
+type ActionState =
+  | { step: 'checking' }
+  | { step: 'reset'; email: string }
+  | { step: 'reset-done' }
+  | { step: 'verified' }
+  | { step: 'failed'; error: MessageKey }
+
+/**
+ * Handles Firebase email links (password reset and email verification) inside the app, when the
+ * project's custom action URL points here. Each link is checked with Firebase before anything is shown.
+ */
+export function AuthActionPage() {
+  const { t } = useI18n()
+  const [params] = useSearchParams()
+  const mode = params.get('mode')
+  const code = params.get('oobCode') ?? ''
+  const known = (mode === 'resetPassword' || mode === 'verifyEmail') && code !== ''
+  const [state, setState] = useState<ActionState>(known ? { step: 'checking' } : { step: 'failed', error: 'auth.actionUnknown' })
+  const { register, handleSubmit, formState, control } = useForm<NewPasswordValues>({ resolver: zodResolver(newPasswordSchema), defaultValues: { password: '', confirm: '' } })
+  const password = useWatch({ control, name: 'password' }) ?? ''
+
+  useEffect(() => {
+    if (!known) return
+    let cancelled = false
+    const auth = getFirebaseServices().auth
+    const check = mode === 'resetPassword' ? verifyResetCode(auth, code).then((email): ActionState => ({ step: 'reset', email })) : verifyEmailCode(auth, code).then((): ActionState => ({ step: 'verified' }))
+    check
+      .catch((e: unknown): ActionState => ({ step: 'failed', error: errorKey(e, 'errors.actionInvalid') }))
+      .then((next) => {
+        if (!cancelled) setState(next)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [known, mode, code])
+
+  const onSubmit = handleSubmit(async (values) => {
+    try {
+      await completePasswordReset(getFirebaseServices().auth, code, values.password)
+      setState({ step: 'reset-done' })
+    } catch (e) {
+      setState({ step: 'failed', error: errorKey(e, 'errors.actionInvalid') })
+    }
+  })
+
+  const title =
+    state.step === 'reset' ? t('auth.newPasswordTitle') : state.step === 'verified' ? t('auth.emailVerifiedTitle') : state.step === 'failed' ? t('auth.actionFailedTitle') : state.step === 'reset-done' ? t('auth.newPasswordTitle') : t('auth.actionChecking')
+  const description = state.step === 'reset' ? t('auth.newPasswordText', { email: state.email }) : ''
+
+  return (
+    <AuthShell
+      title={title}
+      description={description}
+      footer={
+        <Link to="/login" className="font-medium text-primary hover:underline">
+          {t('auth.backToSignIn')}
+        </Link>
+      }
+    >
+      {state.step === 'checking' ? (
+        <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Loader2Icon className="size-4 animate-spin" aria-hidden="true" /> {t('auth.actionChecking')}
+        </p>
+      ) : state.step === 'reset' ? (
+        <form onSubmit={onSubmit} noValidate className="grid gap-4">
+          <FormField label={t('auth.newPassword')} error={formState.errors.password?.message}>
+            <PasswordInput autoComplete="new-password" {...register('password')} />
+          </FormField>
+          <PasswordChecklist password={password} />
+          <FormField label={t('auth.confirmPassword')} error={formState.errors.confirm?.message}>
+            <PasswordInput autoComplete="new-password" {...register('confirm')} />
+          </FormField>
+          <SubmitButton pending={formState.isSubmitting}>{t('auth.savePassword')}</SubmitButton>
+        </form>
+      ) : state.step === 'failed' ? (
+        <div className="grid gap-3">
+          <FormError message={t(state.error)} />
+          <Link to="/forgot-password" className="text-sm font-medium text-primary hover:underline">
+            {t('auth.sendReset')}
+          </Link>
+        </div>
+      ) : (
+        <div role="status" className="flex gap-3 text-sm">
+          <CheckCircle2Icon className="mt-0.5 size-5 shrink-0 text-income" aria-hidden="true" />
+          <div className="grid gap-3">
+            <p>{state.step === 'verified' ? t('auth.emailVerified') : t('auth.passwordChanged')}</p>
+            <Button asChild>
+              <Link to={state.step === 'verified' ? APP_BASE : '/login'}>{state.step === 'verified' ? t('auth.continueToApp') : t('auth.signIn')}</Link>
+            </Button>
+          </div>
+        </div>
       )}
     </AuthShell>
   )

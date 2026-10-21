@@ -30,6 +30,17 @@ export const registerSchema = z
 
 export const resetSchema = z.object({ email })
 
+export const newPasswordSchema = z
+  .object({
+    password: z
+      .string()
+      .max(128, 'validation.passwordTooLong')
+      .refine((p) => PASSWORD_RULES.every((r) => r.test(p)), 'validation.passwordRules'),
+    confirm: z.string().min(1, 'validation.confirmRequired'),
+  })
+  .refine((v) => v.password === v.confirm, { path: ['confirm'], message: 'validation.passwordMismatch' })
+
 export type LoginValues = z.input<typeof loginSchema>
 export type RegisterValues = z.input<typeof registerSchema>
 export type ResetValues = z.input<typeof resetSchema>
+export type NewPasswordValues = z.input<typeof newPasswordSchema>

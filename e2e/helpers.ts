@@ -42,8 +42,9 @@ export async function go(page: Page, path = '/') {
 /** Opens a demo route and waits until the demo data is loaded and the page heading is shown. */
 export async function gotoApp(page: Page, path = '/') {
   await go(page, path)
-  await expect(page.getByText('Demo mode', { exact: false }).first()).toBeVisible()
-  await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
+  // Generous on purpose: the first page load of a worker (cold preview server, lazy chunks) can take a few seconds.
+  await expect(page.getByText('Demo mode', { exact: false }).first()).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByRole('heading', { level: 1 })).toBeVisible({ timeout: 15_000 })
 }
 
 /** Navigates with the visible desktop sidebar / tablet rail. */
@@ -54,7 +55,7 @@ export async function navTo(page: Page, link: string, heading = link) {
 
 export async function addTransaction(
   page: Page,
-  values: { type?: 'income' | 'expense'; description: string; amount: string; category?: string; currency?: string; date?: string },
+  values: { type?: 'income' | 'expense'; description: string; amount: string; category?: string; currency?: string; date?: string; accountId?: string },
 ) {
   await page.getByRole('main').getByRole('button', { name: 'Add transaction' }).first().click()
   const dialog = page.getByRole('dialog')
@@ -65,6 +66,7 @@ export async function addTransaction(
   if (values.currency) await dialog.getByLabel('Currency').selectOption(values.currency)
   if (values.category) await dialog.getByLabel('Category').selectOption({ label: values.category })
   if (values.date) await dialog.getByLabel('Date', { exact: true }).fill(values.date)
+  if (values.accountId) await dialog.getByLabel('Account', { exact: true }).selectOption(values.accountId)
   await dialog.getByRole('button', { name: 'Add transaction' }).click()
   await expect(dialog).toBeHidden()
 }
